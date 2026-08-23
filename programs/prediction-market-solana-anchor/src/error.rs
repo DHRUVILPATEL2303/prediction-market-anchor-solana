@@ -15,4 +15,11 @@ pub enum PredictionMarketError {
 
     #[msg("Question Must Not Be Empty")]
     QuestionIsTooLong,
+
+
+    #[msg("Invalid Amount . Amount must be greater than 0")]
+    InvalidAmount,
+
+    #[msg("Market Already Resolved")]
+    MarketAlreadyResolved,
 }
