@@ -7,10 +7,13 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-prediction_market_solana_anchor = "4wgX7snLPQYehm7HtbPHswyTfoc4uRFFpWDVSNQyvX7B"
+prediction_market_solana_anchor = "4CuVBXGtjdyYDDiffuSKmFH6U52BfZmovKpYR3Rf4AF3"
+
+[programs.devnet]
+prediction_market_solana_anchor = "4CuVBXGtjdyYDDiffuSKmFH6U52BfZmovKpYR3Rf4AF3"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
