@@ -1,16 +1,16 @@
 pub mod constants;
 pub mod error;
+pub mod events;
 pub mod instructions;
 pub mod state;
-pub mod events;
 
 use anchor_lang::prelude::*;
 
 pub use constants::*;
+pub use events::*;
 pub use instructions::*;
 pub use state::*;
-pub use events::*;
-declare_id!("4wgX7snLPQYehm7HtbPHswyTfoc4uRFFpWDVSNQyvX7B");
+declare_id!("6pUx6pwYTVo5Aa2E217K4mRyRMa7jujHYvApgeVpSJBn");
 
 #[program]
 pub mod prediction_market_solana_anchor {
@@ -27,4 +27,3 @@ pub mod prediction_market_solana_anchor {
         Ok(())
     }
 }
-

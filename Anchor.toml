@@ -6,11 +6,11 @@ skip_local_validator = true
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-prediction_market_solana_anchor = "4CuVBXGtjdyYDDiffuSKmFH6U52BfZmovKpYR3Rf4AF3"
-
 [programs.devnet]
-prediction_market_solana_anchor = "4CuVBXGtjdyYDDiffuSKmFH6U52BfZmovKpYR3Rf4AF3"
+prediction_market_solana_anchor = "6pUx6pwYTVo5Aa2E217K4mRyRMa7jujHYvApgeVpSJBn"
+
+[programs.localnet]
+prediction_market_solana_anchor = "6pUx6pwYTVo5Aa2E217K4mRyRMa7jujHYvApgeVpSJBn"
 
 [provider]
 cluster = "devnet"

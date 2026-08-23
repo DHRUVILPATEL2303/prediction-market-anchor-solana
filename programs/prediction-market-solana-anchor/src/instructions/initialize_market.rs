@@ -1,7 +1,11 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
-use crate::{error::PredictionMarketError, state::{Market, Outcome}, MarketCreated};
+use crate::{
+    error::PredictionMarketError,
+    state::{Market, Outcome},
+    MarketCreated,
+};
 
 #[derive(Accounts)]
 #[instruction(market_id : u64)]
@@ -17,7 +21,14 @@ pub struct InitializeMarket<'info> {
     #[account(seeds=[b"vault-authority",market.key().as_ref()],bump)]
     pub vault_authority: UncheckedAccount<'info>,
 
-    #[account(init,payer=owner,token::mint=payment_mint,token::authority=vault_authority)]
+    #[account(
+        init,
+        payer=owner,
+        token::mint=payment_mint,
+        token::authority=vault_authority,
+        seeds=[b"vault", market.key().as_ref()],
+        bump
+    )]
     pub vault: Account<'info, TokenAccount>,
 
     pub payment_mint: Account<'info, Mint>,
@@ -58,6 +69,7 @@ pub fn initialize_market(
     market.fee_bps = fee_bps;
     market.treasury = ctx.accounts.treasury.key();
     market.bump = ctx.bumps.market;
+    market.vault_bump = ctx.bumps.vault;
     market.total_no = 0;
     market.total_yes = 0;
     market.outcome = Outcome::Unresolved;

@@ -22,6 +22,7 @@ pub struct Market {
     pub treasury: Pubkey,  //receiver_of_protocol_fees
     pub outcome: Outcome,  //Unresolved, Yes,No
     pub bump: u8,          //PDA_bump
+    pub vault_bump: u8,    //vault_token_account_PDA_bump
 }
 
 #[derive(AnchorDeserialize, AnchorSerialize, Clone, Copy, PartialEq, Eq, InitSpace)]
