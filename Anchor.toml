@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-prediction_market_solana_anchor = "3vYcKaKvwMyZU6ViTgdSYaizoJ96AsQiFztRLHsqC38f"
+prediction_market_solana_anchor = "4wgX7snLPQYehm7HtbPHswyTfoc4uRFFpWDVSNQyvX7B"
 
 [provider]
 cluster = "localnet"

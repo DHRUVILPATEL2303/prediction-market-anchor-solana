@@ -1,6 +1,8 @@
 .anchor
 .DS_Store
 target
+# Keep the deploy keypair so Program ID stays stable
+!target/deploy/prediction_market_solana_anchor-keypair.json
 **/*.rs.bk
 node_modules
 test-ledger

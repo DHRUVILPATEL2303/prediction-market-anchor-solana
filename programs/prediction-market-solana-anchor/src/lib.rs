@@ -10,7 +10,7 @@ pub use constants::*;
 pub use instructions::*;
 pub use state::*;
 pub use events::*;
-declare_id!("3vYcKaKvwMyZU6ViTgdSYaizoJ96AsQiFztRLHsqC38f");
+declare_id!("4wgX7snLPQYehm7HtbPHswyTfoc4uRFFpWDVSNQyvX7B");
 
 #[program]
 pub mod prediction_market_solana_anchor {
