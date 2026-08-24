@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-prediction_market_solana_anchor = "6pUx6pwYTVo5Aa2E217K4mRyRMa7jujHYvApgeVpSJBn"
+prediction_market_solana_anchor = "96GMnsCYX1oHM2fJoD7QMZqWT7TDLc6mq8soGJKVDggs"
 
 [programs.localnet]
 prediction_market_solana_anchor = "6pUx6pwYTVo5Aa2E217K4mRyRMa7jujHYvApgeVpSJBn"

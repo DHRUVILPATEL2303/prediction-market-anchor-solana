@@ -22,4 +22,13 @@ pub enum PredictionMarketError {
 
     #[msg("Market Already Resolved")]
     MarketAlreadyResolved,
+
+    #[msg("Invalid Mint ")]
+    InvalidMint,
+
+    #[msg("Market Closed")]
+    MarketClosed,
+
+    #[msg("Math Overflow Cannot be Increased")]
+    MathOverflow
 }

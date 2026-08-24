@@ -11,7 +11,7 @@ pub use error::*;
 pub use events::*;
 pub use instructions::*;
 pub use state::*;
-declare_id!("6pUx6pwYTVo5Aa2E217K4mRyRMa7jujHYvApgeVpSJBn");
+declare_id!("96GMnsCYX1oHM2fJoD7QMZqWT7TDLc6mq8soGJKVDggs");
 
 #[program]
 pub mod prediction_market_solana_anchor {
@@ -25,6 +25,11 @@ pub mod prediction_market_solana_anchor {
         fee_bps: u16,
     ) -> Result<()> {
         initialize_market(ctx, market_id, question, end_time, fee_bps)?;
+        Ok(())
+    }
+
+    pub fn buy_anchor(ctx : Context<Buy> , side : Side , amount : u64) -> Result<()>{
+        buy(ctx, side, amount)?;
         Ok(())
     }
 }
