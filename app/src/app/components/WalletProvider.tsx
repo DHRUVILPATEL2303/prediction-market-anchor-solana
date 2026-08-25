@@ -10,9 +10,8 @@ import {
   PhantomWalletAdapter,
   SolflareWalletAdapter,
 } from "@solana/wallet-adapter-wallets";
-import { clusterApiUrl } from "@solana/web3.js";
 
-const DEVNET_RPC = clusterApiUrl("devnet");
+const DEVNET_RPC = "https://devnet.helius-rpc.com/?api-key=b07f07b6-4c5a-417d-9c31-93300c828917";
 
 export const WalletContextProvider: FC<{ children: ReactNode }> = ({
   children,

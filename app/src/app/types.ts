@@ -7,8 +7,9 @@ export interface MarketAccount {
   feeBps: number;
   totalYes: string;
   totalNo: string;
+  totalAmount: string; // new field in IDL
   treasury: string;
-  outcome: "Unresolved" | "Yes" | "No";
+  outcome: "Unresolved" | "Yes" | "No" | "Cancelled";
   paymentMint: string;
 }
 
@@ -19,4 +20,5 @@ export interface PositionAccount {
   yesShares: string;
   noShares: string;
   claimed: boolean;
+  refunded: boolean; // new field in IDL
 }

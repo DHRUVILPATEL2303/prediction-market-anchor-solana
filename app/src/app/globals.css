@@ -112,3 +112,79 @@ button, input { font: inherit; }
 .buy-question, .buy-summary { padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); } .buy-summary { display: flex; flex-direction: column; gap: 8px; } .summary-row { display: flex; justify-content: space-between; color: var(--text-secondary); font-size: 13px; } .summary-row span:last-child { color: var(--text-primary); font-weight: 700; }
 .amount-input-wrap { position: relative; } .amount-input { padding-right: 58px; } .amount-suffix { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: var(--text-muted); font-size: 12px; font-weight: 700; }
 @media (max-width: 600px) { .navbar { padding: 0 16px; } .wallet-address { display: none; } .hero { padding: 56px 16px 44px; } .market-list-container { padding: 0 16px 60px; } .form-row { grid-template-columns: 1fr; } .markets-grid, .loading-grid { grid-template-columns: 1fr; } }
+/* Market Details Page */
+.market-details-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.market-header-card {
+  background: rgba(26, 32, 53, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 20px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.market-details-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-top: 1rem;
+  color: #fff;
+  line-height: 1.3;
+}
+
+.market-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .market-panels {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.panel {
+  background: rgba(26, 32, 53, 0.4);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+
+.panel h2 {
+  font-size: 1.25rem;
+  color: #fff;
+  margin-bottom: 0.5rem;
+}
+
+.panel p {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.position-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 1rem;
+  border-radius: 12px;
+}
+
+.settlement-action {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

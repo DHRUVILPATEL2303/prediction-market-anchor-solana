@@ -28,12 +28,12 @@ pub mod prediction_market_solana_anchor {
         Ok(())
     }
 
-    pub fn buy_anchor(ctx : Context<Buy> , side : Side , amount : u64) -> Result<()>{
+    pub fn buy_anchor(ctx: Context<Buy>, side: Side, amount: u64) -> Result<()> {
         buy(ctx, side, amount)?;
         Ok(())
     }
 
-    pub fn resolve_market_anchor(ctx : Context<ResolveMarket>,outcome : Outcome) -> Result<()>{
+    pub fn resolve_market_anchor(ctx: Context<ResolveMarket>, outcome: Outcome) -> Result<()> {
         resolve_market(ctx, outcome)?;
         Ok(())
     }
@@ -43,9 +43,7 @@ pub mod prediction_market_solana_anchor {
         Ok(())
     }
 
-    pub fn cancel_market_anchor(
-        ctx: Context<CancelMarket>,
-    ) -> Result<()> {
+    pub fn cancel_market_anchor(ctx: Context<CancelMarket>) -> Result<()> {
         cancel_market(ctx)?;
         Ok(())
     }

@@ -1,10 +1,10 @@
 "use client";
 
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { Program, AnchorProvider, BN, Idl, Wallet } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
+import { Program, AnchorProvider, BN, Idl, Wallet, utils } from "@coral-xyz/anchor";
 import idl from "../idl.json";
 import { MarketAccount } from "../types";
 
@@ -47,8 +47,8 @@ export function useMarketActions() {
   ) {
     if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
 
-    const marketId = BigInt(Date.now());
-    const marketIdBN = new BN(marketId.toString());
+    // Generate a unique market ID using timestamp since there is no on-chain counter
+    const marketIdBN = new BN(Date.now());
     const paymentMint = new PublicKey(paymentMintAddress);
 
     const [marketPda] = PublicKey.findProgramAddressSync(
@@ -140,32 +140,234 @@ export function useMarketActions() {
     return { tx };
   }
 
-  return { createMarket, buyShares };
+  async function resolveMarket(marketPubkey: string, outcome: "Yes" | "No" | "Cancelled") {
+    if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
+    const market = new PublicKey(marketPubkey);
+    let outcomeArg;
+    if (outcome === "Yes") outcomeArg = { yes: {} };
+    else if (outcome === "No") outcomeArg = { no: {} };
+    else outcomeArg = { cancelled: {} };
+
+    const tx = await program.methods
+      .resolveMarketAnchor(outcomeArg as never)
+      .accounts({
+        market,
+        authority: wallet.publicKey,
+      })
+      .rpc();
+    return { tx };
+  }
+
+  async function cancelMarket(marketPubkey: string) {
+    if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
+    const market = new PublicKey(marketPubkey);
+    const tx = await program.methods
+      .cancelMarketAnchor()
+      .accounts({
+        market,
+        authority: wallet.publicKey,
+      })
+      .rpc();
+    return { tx };
+  }
+
+  async function claimWinnings(
+    marketPubkey: string,
+    paymentMintAddress: string,
+    claimerTokenAccount: string,
+    treasuryTokenAccount: string
+  ) {
+    if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
+    const market = new PublicKey(marketPubkey);
+    const paymentMint = new PublicKey(paymentMintAddress);
+    
+    const [position] = PublicKey.findProgramAddressSync(
+      [Buffer.from("position"), wallet.publicKey.toBuffer(), market.toBuffer()],
+      PROGRAM_ID
+    );
+    const [vaultAuthority] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault-authority"), market.toBuffer()],
+      PROGRAM_ID
+    );
+    const [vault] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), market.toBuffer()],
+      PROGRAM_ID
+    );
+
+    const tx = await program.methods
+      .claimAnchor()
+      .accounts({
+        claimer: wallet.publicKey,
+        market,
+        position,
+        vaultAuthority,
+        vault,
+        paymentMint,
+        claimerTokenAccount: new PublicKey(claimerTokenAccount),
+        tresuryTokenAccount: new PublicKey(treasuryTokenAccount),
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+    return { tx };
+  }
+
+  async function refundPosition(
+    marketPubkey: string,
+    paymentMintAddress: string,
+    refunderTokenAccount: string
+  ) {
+    if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
+    const market = new PublicKey(marketPubkey);
+    const paymentMint = new PublicKey(paymentMintAddress);
+
+    const [position] = PublicKey.findProgramAddressSync(
+      [Buffer.from("position"), wallet.publicKey.toBuffer(), market.toBuffer()],
+      PROGRAM_ID
+    );
+    const [vaultAuthority] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault-authority"), market.toBuffer()],
+      PROGRAM_ID
+    );
+    const [vault] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), market.toBuffer()],
+      PROGRAM_ID
+    );
+
+    const tx = await program.methods
+      .refundAnchor()
+      .accounts({
+        refunder: wallet.publicKey,
+        market,
+        position,
+        vaultAuthority,
+        vault,
+        paymentMint,
+        refunderTokenAccount: new PublicKey(refunderTokenAccount),
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+    return { tx };
+  }
+
+  const fetchUserPosition = useCallback(async (marketPubkey: string) => {
+    if (!program || !wallet.publicKey) return null;
+    const market = new PublicKey(marketPubkey);
+    const [position] = PublicKey.findProgramAddressSync(
+      [Buffer.from("position"), wallet.publicKey.toBuffer(), market.toBuffer()],
+      PROGRAM_ID
+    );
+    try {
+      const acc = await program.account.position.fetch(position);
+      return {
+        publicKey: position.toString(),
+        owner: acc.owner.toString(),
+        market: acc.market.toString(),
+        yesShares: acc.yesShares.toString(),
+        noShares: acc.noShares.toString(),
+        claimed: acc.claimed,
+        refunded: acc.refunded,
+      };
+    } catch (e) {
+      return null;
+    }
+  }, [program, wallet.publicKey]);
+
+  return { createMarket, buyShares, resolveMarket, cancelMarket, claimWinnings, refundPosition, fetchUserPosition };
+}
+
+export async function fetchMarket(
+  program: Program,
+  marketPubkey: string
+): Promise<MarketAccount | null> {
+  try {
+    const pk = new PublicKey(marketPubkey);
+    const a = await program.account.market.fetch(pk);
+    return {
+      publicKey: pk.toString(),
+      marketId: a.marketId.toString(),
+      question: a.question,
+      authority: a.authority.toString(),
+      endTime: a.endTime.toNumber(),
+      feeBps: a.feeBps,
+      totalYes: a.totalYes.toString(),
+      totalNo: a.totalNo.toString(),
+      totalAmount: a.totalAmount ? a.totalAmount.toString() : "0",
+      treasury: a.treasury.toString(),
+      outcome: a.outcome.unresolved
+        ? "Unresolved"
+        : a.outcome.yes
+        ? "Yes"
+        : a.outcome.no
+        ? "No"
+        : "Cancelled",
+      paymentMint: a.paymentMint.toString(),
+    };
+  } catch (e) {
+    console.error("fetchAllMarkets error:", e);
+    return [];
+  }
 }
 
 export async function fetchAllMarkets(
   program: Program
 ): Promise<MarketAccount[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const accounts = await (program.account as any).market.all();
-  return accounts.map(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (a: any): MarketAccount => ({
-      publicKey: a.publicKey.toString(),
-      marketId: a.account.marketId.toString(),
-      question: a.account.question,
-      authority: a.account.authority.toString(),
-      endTime: a.account.endTime.toNumber(),
-      feeBps: a.account.feeBps,
-      totalYes: a.account.totalYes.toString(),
-      totalNo: a.account.totalNo.toString(),
-      treasury: a.account.treasury.toString(),
-      outcome: a.account.outcome.unresolved
-        ? "Unresolved"
-        : a.account.outcome.yes
-        ? "Yes"
-        : "No",
-      paymentMint: a.account.paymentMint.toString(),
-    })
-  );
+  try {
+    // Instead of using program.account.market.all() which crashes if ANY old account fails to decode,
+    // we manually fetch all program accounts and attempt to decode them one by one.
+    const connection = program.provider.connection;
+    const programId = program.programId;
+    
+    // We filter by the exact 8-byte discriminator for the Market account to avoid fetching positions
+    // Discriminator for Market is hash("account:Market")[..8]
+    const marketDiscriminator = Buffer.from([219, 190, 213, 55, 0, 227, 198, 154]);
+
+    const rawAccounts = await connection.getProgramAccounts(programId, {
+      commitment: "confirmed",
+      encoding: "base64",
+      filters: [
+        {
+          memcmp: {
+            offset: 0,
+            bytes: utils.bytes.bs58.encode(marketDiscriminator),
+          },
+        },
+      ],
+    });
+
+    const validMarkets: MarketAccount[] = [];
+
+    for (const raw of rawAccounts) {
+      try {
+        const decoded = await program.coder.accounts.decode("market", raw.account.data);
+        validMarkets.push({
+          publicKey: raw.pubkey.toString(),
+          marketId: decoded.marketId.toString(),
+          question: decoded.question,
+          authority: decoded.authority.toString(),
+          endTime: decoded.endTime.toNumber(),
+          feeBps: decoded.feeBps,
+          totalYes: decoded.totalYes.toString(),
+          totalNo: decoded.totalNo.toString(),
+          totalAmount: decoded.totalAmount ? decoded.totalAmount.toString() : "0",
+          treasury: decoded.treasury.toString(),
+          outcome: decoded.outcome.unresolved
+            ? "Unresolved"
+            : decoded.outcome.yes
+            ? "Yes"
+            : decoded.outcome.no
+            ? "No"
+            : "Cancelled",
+          paymentMint: decoded.paymentMint.toString(),
+        });
+      } catch (decodeErr) {
+        // Skip accounts that fail to decode (e.g. old schema versions before total_amount was added)
+        console.warn("Skipped un-decodable market:", raw.pubkey.toString());
+      }
+    }
+
+    return validMarkets;
+  } catch (e) {
+    console.error("fetchAllMarkets error:", e);
+    return [];
+  }
 }

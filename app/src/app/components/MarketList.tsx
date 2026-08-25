@@ -31,6 +31,8 @@ export function MarketList() {
     } finally {
       setLoading(false);
     }
+  // program identity is stable (memoized in useProgram), safe to depend on
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [program]);
 
   useEffect(() => {

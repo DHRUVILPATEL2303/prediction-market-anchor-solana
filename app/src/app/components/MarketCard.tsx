@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 import { MarketAccount } from "../types";
-import { BuyModal } from "./BuyModal";
 
 interface Props {
   market: MarketAccount;
@@ -24,7 +23,6 @@ function formatShares(raw: string) {
 }
 
 export function MarketCard({ market }: Props) {
-  const [showBuy, setShowBuy] = useState(false);
   const totalYes = BigInt(market.totalYes);
   const totalNo = BigInt(market.totalNo);
   const total = totalYes + totalNo;
@@ -36,8 +34,7 @@ export function MarketCard({ market }: Props) {
   const daysLeft = Math.max(0, Math.floor(timeLeft / 86400000));
 
   return (
-    <>
-      <div className={`market-card ${market.outcome !== "Unresolved" ? "market-card-resolved" : ""}`}>
+    <Link href={`/market/${market.publicKey}`} className={`market-card ${market.outcome !== "Unresolved" ? "market-card-resolved" : ""}`} style={{ textDecoration: 'none' }}>
         <div className="market-card-header">
           <span className={`badge ${cls}`}>{label}</span>
           <span className="market-id">#{market.marketId}</span>
@@ -94,19 +91,10 @@ export function MarketCard({ market }: Props) {
         </div>
 
         {market.outcome === "Unresolved" && !isExpired && (
-          <button className="btn-trade" onClick={() => setShowBuy(true)}>
-            Place Bet
-          </button>
+          <div className="btn-trade" style={{ textAlign: "center" }}>
+            View Market
+          </div>
         )}
-      </div>
-
-      {showBuy && (
-        <BuyModal
-          market={market}
-          onClose={() => setShowBuy(false)}
-          onSuccess={() => setShowBuy(false)}
-        />
-      )}
-    </>
+    </Link>
   );
 }

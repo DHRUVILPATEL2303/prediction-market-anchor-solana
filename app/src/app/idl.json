@@ -112,6 +112,179 @@
       ]
     },
     {
+      "name": "cancel_market_anchor",
+      "discriminator": [
+        239,
+        175,
+        41,
+        219,
+        15,
+        128,
+        193,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_anchor",
+      "discriminator": [
+        154,
+        174,
+        79,
+        236,
+        146,
+        153,
+        48,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "claimer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "claimer"
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  45,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payment_mint"
+        },
+        {
+          "name": "claimer_token_account",
+          "writable": true
+        },
+        {
+          "name": "tresury_token_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initialize_market_anchor",
       "discriminator": [
         78,
@@ -246,6 +419,186 @@
           "type": "u16"
         }
       ]
+    },
+    {
+      "name": "refund_anchor",
+      "discriminator": [
+        70,
+        122,
+        254,
+        171,
+        2,
+        55,
+        37,
+        121
+      ],
+      "accounts": [
+        {
+          "name": "refunder",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "refunder"
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Its address is cryptographically verified by the seeds constraint below."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  45,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payment_mint"
+        },
+        {
+          "name": "refunder_token_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "resolve_market_anchor",
+      "discriminator": [
+        158,
+        221,
+        153,
+        17,
+        3,
+        236,
+        151,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": {
+            "defined": {
+              "name": "Outcome"
+            }
+          }
+        }
+      ]
     }
   ],
   "accounts": [
@@ -278,6 +631,19 @@
   ],
   "events": [
     {
+      "name": "MarketCancelled",
+      "discriminator": [
+        139,
+        163,
+        33,
+        168,
+        19,
+        180,
+        81,
+        170
+      ]
+    },
+    {
       "name": "MarketCreated",
       "discriminator": [
         88,
@@ -291,6 +657,32 @@
       ]
     },
     {
+      "name": "MarketResolved",
+      "discriminator": [
+        89,
+        67,
+        230,
+        95,
+        143,
+        106,
+        199,
+        202
+      ]
+    },
+    {
+      "name": "RefundIssued",
+      "discriminator": [
+        249,
+        16,
+        159,
+        159,
+        93,
+        186,
+        145,
+        206
+      ]
+    },
+    {
       "name": "SharesPurchased",
       "discriminator": [
         24,
@@ -301,6 +693,19 @@
         182,
         47,
         22
+      ]
+    },
+    {
+      "name": "WinningsClaimed",
+      "discriminator": [
+        187,
+        184,
+        29,
+        196,
+        54,
+        117,
+        70,
+        150
       ]
     }
   ],
@@ -327,28 +732,83 @@
     },
     {
       "code": 6004,
+      "name": "Unauthorized",
+      "msg": "Unauthorized"
+    },
+    {
+      "code": 6005,
+      "name": "NoRefundAvailable",
+      "msg": "No Refund Available"
+    },
+    {
+      "code": 6006,
+      "name": "MarketNotCancelled",
+      "msg": "Market Not Cancelled"
+    },
+    {
+      "code": 6007,
+      "name": "AlreadyRefunded",
+      "msg": "Already Refunded"
+    },
+    {
+      "code": 6008,
+      "name": "InsufficientVaultFunds",
+      "msg": "Insufficient Vault Funds"
+    },
+    {
+      "code": 6009,
+      "name": "NoWinningShares",
+      "msg": "No Winning Shares"
+    },
+    {
+      "code": 6010,
+      "name": "AlreadyClaimed",
+      "msg": "Already Claimed"
+    },
+    {
+      "code": 6011,
+      "name": "MarketNotResolved",
+      "msg": "Market Not Resolved Yet"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidPosition",
+      "msg": "Invalid Position"
+    },
+    {
+      "code": 6013,
       "name": "InvalidAmount",
       "msg": "Invalid Amount . Amount must be greater than 0"
     },
     {
-      "code": 6005,
+      "code": 6014,
       "name": "MarketAlreadyResolved",
       "msg": "Market Already Resolved"
     },
     {
-      "code": 6006,
+      "code": 6015,
+      "name": "InvalidOutcome",
+      "msg": "Invalid Outcome"
+    },
+    {
+      "code": 6016,
       "name": "InvalidMint",
       "msg": "Invalid Mint "
     },
     {
-      "code": 6007,
+      "code": 6017,
       "name": "MarketClosed",
       "msg": "Market Closed"
     },
     {
-      "code": 6008,
+      "code": 6018,
       "name": "MathOverflow",
       "msg": "Math Overflow Cannot be Increased"
+    },
+    {
+      "code": 6019,
+      "name": "MarketNotEnded",
+      "msg": "Market Not Ended"
     }
   ],
   "types": [
@@ -408,6 +868,26 @@
           {
             "name": "vault_bump",
             "type": "u8"
+          },
+          {
+            "name": "total_amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
           }
         ]
       }
@@ -445,6 +925,30 @@
       }
     },
     {
+      "name": "MarketResolved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": {
+              "defined": {
+                "name": "Outcome"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "Outcome",
       "type": {
         "kind": "enum",
@@ -457,6 +961,9 @@
           },
           {
             "name": "No"
+          },
+          {
+            "name": "Cancelled"
           }
         ]
       }
@@ -487,8 +994,32 @@
             "type": "bool"
           },
           {
+            "name": "refunded",
+            "type": "bool"
+          },
+          {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RefundIssued",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "refunder",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
           }
         ]
       }
@@ -531,6 +1062,34 @@
           },
           {
             "name": "No"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WinningsClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "claimer",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
           }
         ]
       }

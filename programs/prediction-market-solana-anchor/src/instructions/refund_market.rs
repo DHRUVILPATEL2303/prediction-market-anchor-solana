@@ -18,6 +18,10 @@ pub struct Refund<'info> {
     )]
     pub position: Account<'info, Position>,
 
+
+
+    /// CHECK: PDA authority for the vault. No data is read from this account.
+    /// Its address is cryptographically verified by the seeds constraint below.
     #[account(seeds = [b"vault-authority",market.key().as_ref()],
         bump)]
     pub vault_authority: UncheckedAccount<'info>,
