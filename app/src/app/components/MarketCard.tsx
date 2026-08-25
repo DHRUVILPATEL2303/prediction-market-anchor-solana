@@ -9,9 +9,9 @@ interface Props {
 }
 
 function outcomeLabel(outcome: string) {
-  if (outcome === "Yes") return { label: "✅ Resolved YES", cls: "badge-yes" };
-  if (outcome === "No") return { label: "❌ Resolved NO", cls: "badge-no" };
-  return { label: "⏳ Active", cls: "badge-active" };
+  if (outcome === "Yes") return { label: "Resolved YES", cls: "badge-yes" };
+  if (outcome === "No") return { label: "Resolved NO", cls: "badge-no" };
+  return { label: "Active", cls: "badge-active" };
 }
 
 function formatShares(raw: string) {
