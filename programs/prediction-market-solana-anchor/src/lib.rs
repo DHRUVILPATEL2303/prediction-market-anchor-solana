@@ -32,4 +32,9 @@ pub mod prediction_market_solana_anchor {
         buy(ctx, side, amount)?;
         Ok(())
     }
+
+    pub fn resolve_market_anchor(ctx : Context<ResolveMarket>,outcome : Outcome) -> Result<()>{
+        resolve_market(ctx, outcome)?;
+        Ok(())
+    }
 }

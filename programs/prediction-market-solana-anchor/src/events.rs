@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::Side;
+use crate::{Market, Outcome, Side};
 
 #[event]
 pub struct MarketCreated {
@@ -19,4 +19,12 @@ pub struct SharesPurchased {
     pub market: Pubkey,
     pub side: Side,
     pub amount: u64,
+}
+
+#[event]
+pub struct MarketResolved {
+    pub market : Pubkey,
+    pub authority : Pubkey,
+    pub outcome : Outcome
+    
 }

@@ -16,12 +16,20 @@ pub enum PredictionMarketError {
     #[msg("Question Must Not Be Empty")]
     QuestionIsTooLong,
 
+    #[msg("Unauthorized")]
+    Unauthorized,
 
+
+    #[msg("Invalid Position")]
+    InvalidPosition,
     #[msg("Invalid Amount . Amount must be greater than 0")]
     InvalidAmount,
 
     #[msg("Market Already Resolved")]
     MarketAlreadyResolved,
+
+    #[msg("Invalid Outcome")]
+    InvalidOutcome,
 
     #[msg("Invalid Mint ")]
     InvalidMint,
@@ -30,5 +38,8 @@ pub enum PredictionMarketError {
     MarketClosed,
 
     #[msg("Math Overflow Cannot be Increased")]
-    MathOverflow
+    MathOverflow,
+
+    #[msg("Market Not Ended")]
+    MarketNotEnded,
 }
