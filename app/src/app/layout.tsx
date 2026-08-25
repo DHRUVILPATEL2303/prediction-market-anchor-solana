@@ -13,7 +13,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="bg-background">
       <body className={inter.className}>{children}</body>
     </html>
   );

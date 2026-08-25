@@ -80,12 +80,12 @@ export function MarketList() {
         <input
           type="text"
           className="search-input"
-          placeholder="🔍 Search markets…"
+          placeholder="Search markets…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
         <button className="btn-refresh" onClick={loadMarkets} disabled={loading}>
-          {loading ? "Loading…" : "↻ Refresh"}
+          {loading ? "Loading…" : "Refresh"}
         </button>
       </div>
 
@@ -95,7 +95,11 @@ export function MarketList() {
       {/* Not connected */}
       {!connected && (
         <div className="connect-prompt">
-          <div className="connect-icon">🔗</div>
+          <div className="connect-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M7 17 17 7M9 7h8v8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
           <h2>Connect your wallet to get started</h2>
           <p>View markets and place predictions on Solana devnet.</p>
         </div>
@@ -115,7 +119,7 @@ export function MarketList() {
         <>
           {filtered.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">📊</div>
+              <div className="empty-icon" aria-hidden="true">—</div>
               <h3>No markets found</h3>
               <p>Be the first to create a prediction market!</p>
               <button className="btn-primary" onClick={() => setShowCreate(true)}>
