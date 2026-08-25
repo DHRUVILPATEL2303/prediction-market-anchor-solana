@@ -62,13 +62,32 @@ pub fn claim_winnings(ctx: Context<Claim>) -> Result<()> {
 
     require!(winning_shares > 0, PredictionMarketError::NoWinningShares);
 
-    let fee = winning_shares
+    let total_winning_shares = match market.outcome {
+        Outcome::No => market.total_no,
+        Outcome::Yes => market.total_yes,
+        Outcome::Unresolved => 0,
+    };
+
+    require!(
+        total_winning_shares > 0,
+        PredictionMarketError::NoWinningShares
+    );
+
+    let total_pool = ctx.accounts.vault.amount;
+
+    let gross_payout = winning_shares
+        .checked_mul(total_pool)
+        .ok_or(PredictionMarketError::MathOverflow)?
+        .checked_div(total_winning_shares)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+
+    let fee = gross_payout
         .checked_mul(market.fee_bps as u64)
         .ok_or(PredictionMarketError::MathOverflow)?
         .checked_div(10_000)
         .ok_or(PredictionMarketError::MathOverflow)?;
 
-    let user_payout = winning_shares
+    let user_payout = gross_payout
         .checked_sub(fee)
         .ok_or(PredictionMarketError::MathOverflow)?;
 
