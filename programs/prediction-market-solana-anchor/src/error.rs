@@ -19,6 +19,12 @@ pub enum PredictionMarketError {
     #[msg("Unauthorized")]
     Unauthorized,
 
+    #[msg("No Refund Available")]
+    NoRefundAvailable,
+
+    #[msg("Market Not Cancelled")]
+    MarketNotCancelled,
+
     #[msg("Already Refunded")]
     AlreadyRefunded,
     #[msg("Insufficient Vault Funds")]

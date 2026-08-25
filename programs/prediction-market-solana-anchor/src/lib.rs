@@ -49,4 +49,9 @@ pub mod prediction_market_solana_anchor {
         cancel_market(ctx)?;
         Ok(())
     }
+
+    pub fn refund_anchor(ctx: Context<Refund>) -> Result<()> {
+        refund(ctx)?;
+        Ok(())
+    }
 }

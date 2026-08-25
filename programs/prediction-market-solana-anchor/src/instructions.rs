@@ -8,3 +8,5 @@ pub mod claim_winnings;
 pub use claim_winnings::*;
 pub mod cancel_market;
 pub use cancel_market::*;
+pub mod refund_market;
+pub use refund_market::*;

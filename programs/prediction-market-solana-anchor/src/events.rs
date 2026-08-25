@@ -43,3 +43,10 @@ pub struct MarketCancelled {
     pub market: Pubkey,
     pub authority: Pubkey,
 }
+
+#[event]
+pub struct RefundIssued {
+    pub refunder: Pubkey,
+    pub market: Pubkey,
+    pub amount: u64,
+}
