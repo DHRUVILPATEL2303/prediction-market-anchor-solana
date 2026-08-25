@@ -20,6 +20,16 @@ pub enum PredictionMarketError {
     Unauthorized,
 
 
+    #[msg("No Winning Shares")]
+    NoWinningShares,
+
+    #[msg("Already Claimed")]
+    AlreadyClaimed,
+
+    #[msg("Market Not Resolved Yet")]
+    MarketNotResolved,
+
+
     #[msg("Invalid Position")]
     InvalidPosition,
     #[msg("Invalid Amount . Amount must be greater than 0")]

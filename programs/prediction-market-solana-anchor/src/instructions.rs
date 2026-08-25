@@ -4,3 +4,5 @@ pub mod buy;
 pub use buy::*;
 pub mod resolve_market;
 pub use resolve_market::*;
+pub mod claim_winnings;
+pub use claim_winnings::*;

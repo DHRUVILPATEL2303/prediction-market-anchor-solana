@@ -28,3 +28,12 @@ pub struct MarketResolved {
     pub outcome : Outcome
     
 }
+
+#[event]
+pub struct WinningsClaimed {
+    pub claimer: Pubkey,
+    pub market: Pubkey,
+    pub shares: u64,
+    pub fee: u64,
+    pub payout: u64,
+}

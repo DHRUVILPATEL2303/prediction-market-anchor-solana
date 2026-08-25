@@ -37,4 +37,9 @@ pub mod prediction_market_solana_anchor {
         resolve_market(ctx, outcome)?;
         Ok(())
     }
+
+    pub fn claim_anchor(ctx: Context<Claim>) -> Result<()> {
+        claim_winnings(ctx)?;
+        Ok(())
+    }
 }
