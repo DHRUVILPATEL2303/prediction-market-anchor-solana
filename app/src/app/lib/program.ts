@@ -1,7 +1,7 @@
 "use client";
 
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { Program, AnchorProvider, BN, Idl } from "@coral-xyz/anchor";
+import { Program, AnchorProvider, BN, Idl, Wallet } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { useMemo } from "react";
@@ -22,7 +22,7 @@ export function useProgram() {
     if (!wallet.publicKey || !wallet.signTransaction || !wallet.signAllTransactions) return null;
     return new AnchorProvider(
       connection,
-      wallet as Parameters<typeof AnchorProvider>[1],
+      wallet as unknown as Wallet,
       { commitment: "confirmed" }
     );
   }, [connection, wallet]);
