@@ -73,6 +73,7 @@ pub fn initialize_market(
     market.total_no = 0;
     market.total_yes = 0;
     market.payment_mint = ctx.accounts.payment_mint.key();
+    market.total_amount = 0;
     market.outcome = Outcome::Unresolved;
 
     emit!(MarketCreated {

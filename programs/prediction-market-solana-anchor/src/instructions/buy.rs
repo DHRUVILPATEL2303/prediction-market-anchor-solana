@@ -136,6 +136,11 @@ pub fn buy(ctx: Context<Buy>, side: Side, amount: u64) -> Result<()> {
         }
     }
 
+    market.total_amount = market
+        .total_amount
+        .checked_add(amount)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+
     emit!(SharesPurchased {
         buyer: ctx.accounts.buyer.key(),
         market: market.key(),

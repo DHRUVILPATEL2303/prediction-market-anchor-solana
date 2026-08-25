@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
 
 use crate::{Market, MarketResolved, Outcome, PredictionMarketError};
 
@@ -13,6 +14,8 @@ pub struct ResolveMarket<'info> {
     pub market: Account<'info, Market>,
 
     pub authority: Signer<'info>,
+
+
 }
 
 pub fn resolve_market(ctx: Context<ResolveMarket>, outcome: Outcome) -> Result<()> {
@@ -38,9 +41,9 @@ pub fn resolve_market(ctx: Context<ResolveMarket>, outcome: Outcome) -> Result<(
     market.outcome = outcome;
 
     emit!(MarketResolved {
-        market : market.key(),
-        authority : ctx.accounts.authority.key(),
-        outcome : market.outcome
+        market: market.key(),
+        authority: ctx.accounts.authority.key(),
+        outcome: market.outcome
     });
 
     Ok(())

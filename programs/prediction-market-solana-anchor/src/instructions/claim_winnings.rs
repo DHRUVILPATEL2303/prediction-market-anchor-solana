@@ -12,7 +12,7 @@ pub struct Claim<'info> {
     pub market: Account<'info, Market>,
 
     #[account(mut,seeds=[b"position", claimer.key().as_ref(), market.key().as_ref()],
-        bump = market.bump,
+        bump = position.bump,
         constraint = position.owner==claimer.key() @PredictionMarketError::InvalidPosition,
         constraint = position.market == market.key()
             @ PredictionMarketError::InvalidPosition, )
@@ -37,7 +37,7 @@ pub struct Claim<'info> {
     pub claimer_token_account: Account<'info, TokenAccount>,
 
     //Token Account belongs to protocol treasury
-    #[account(mut, token::mint=payment_mint)]
+    #[account(mut, token::mint=payment_mint,token::authority=market.treasury, constraint = tresury_token_account.owner!=market.treasury @PredictionMarketError::Unauthorized)]
     pub tresury_token_account: Account<'info, TokenAccount>,
 
     pub token_program: Program<'info, Token>,
@@ -73,7 +73,7 @@ pub fn claim_winnings(ctx: Context<Claim>) -> Result<()> {
         PredictionMarketError::NoWinningShares
     );
 
-    let total_pool = ctx.accounts.vault.amount;
+    let total_pool = market.total_amount;
 
     let gross_payout = winning_shares
         .checked_mul(total_pool)
@@ -90,6 +90,16 @@ pub fn claim_winnings(ctx: Context<Claim>) -> Result<()> {
     let user_payout = gross_payout
         .checked_sub(fee)
         .ok_or(PredictionMarketError::MathOverflow)?;
+
+
+    let total_required = user_payout
+        .checked_add(fee)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+    
+    require!(
+        ctx.accounts.vault.amount >= total_required,
+        PredictionMarketError::InsufficientVaultFunds
+    );
 
     let market_key = market.key();
     let vault_authority_bump = [ctx.bumps.vault_authority];

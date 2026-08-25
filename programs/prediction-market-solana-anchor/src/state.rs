@@ -24,6 +24,7 @@ pub struct Market {
     pub bump: u8,             //PDA_bump
     pub payment_mint: Pubkey, //market_accepts_payment_mint
     pub vault_bump: u8,       //vault_token_account_PDA_bump
+    pub total_amount : u64    //total_amount of placed bets 
 }
 
 #[derive(AnchorDeserialize, AnchorSerialize, Clone, Copy, PartialEq, Eq, InitSpace)]

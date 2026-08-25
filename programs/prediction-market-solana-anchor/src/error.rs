@@ -20,6 +20,9 @@ pub enum PredictionMarketError {
     Unauthorized,
 
 
+    #[msg("Insufficient Vault Funds")]
+    InsufficientVaultFunds,
+
     #[msg("No Winning Shares")]
     NoWinningShares,
 
