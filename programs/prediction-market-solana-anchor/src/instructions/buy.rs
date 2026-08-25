@@ -98,15 +98,7 @@ pub fn buy(ctx: Context<Buy>, side: Side, amount: u64) -> Result<()> {
         position.yes_shares = 0;
         position.no_shares = 0;
         position.claimed = false;
-        position.bump = ctx.bumps.position;
-    }
-
-    if position.owner == Pubkey::default() {
-        position.owner = ctx.accounts.buyer.key();
-        position.market = market.key();
-        position.yes_shares = 0;
-        position.no_shares = 0;
-        position.claimed = false;
+        position.refunded = false;
         position.bump = ctx.bumps.position;
     }
 

@@ -6,3 +6,5 @@ pub mod resolve_market;
 pub use resolve_market::*;
 pub mod claim_winnings;
 pub use claim_winnings::*;
+pub mod cancel_market;
+pub use cancel_market::*;

@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::TokenAccount;
 
 use crate::{Market, MarketResolved, Outcome, PredictionMarketError};
 
@@ -7,15 +6,17 @@ use crate::{Market, MarketResolved, Outcome, PredictionMarketError};
 pub struct ResolveMarket<'info> {
     #[account(
         mut,
-        seeds = [b"market", authority.key().as_ref(),&market.market_id.to_le_bytes()],
+        seeds = [
+            b"market",
+            authority.key().as_ref(),
+            &market.market_id.to_le_bytes()
+        ],
         bump = market.bump,
         has_one = authority @ PredictionMarketError::Unauthorized
     )]
     pub market: Account<'info, Market>,
 
     pub authority: Signer<'info>,
-
-
 }
 
 pub fn resolve_market(ctx: Context<ResolveMarket>, outcome: Outcome) -> Result<()> {
@@ -33,17 +34,26 @@ pub fn resolve_market(ctx: Context<ResolveMarket>, outcome: Outcome) -> Result<(
         PredictionMarketError::MarketNotEnded
     );
 
-    require!(
-        outcome != Outcome::Unresolved,
-        PredictionMarketError::InvalidOutcome
-    );
+    match outcome {
+        Outcome::Yes => {
+            require!(market.total_yes > 0, PredictionMarketError::NoWinningShares);
+        }
+
+        Outcome::No => {
+            require!(market.total_no > 0, PredictionMarketError::NoWinningShares);
+        }
+
+        Outcome::Unresolved | Outcome::Cancelled => {
+            return err!(PredictionMarketError::InvalidOutcome);
+        }
+    }
 
     market.outcome = outcome;
 
     emit!(MarketResolved {
         market: market.key(),
         authority: ctx.accounts.authority.key(),
-        outcome: market.outcome
+        outcome,
     });
 
     Ok(())

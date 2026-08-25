@@ -32,6 +32,7 @@ pub enum Outcome {
     Unresolved,
     Yes,
     No,
+    Cancelled,
 }
 
 
@@ -49,5 +50,8 @@ pub struct  Position {
     pub yes_shares: u64,
     pub no_shares: u64,
     pub claimed: bool,
+    pub refunded : bool,
     pub bump: u8,
 }
+
+

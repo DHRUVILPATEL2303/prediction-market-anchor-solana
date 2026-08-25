@@ -1,5 +1,7 @@
 use crate::{Market, Outcome, Position, PredictionMarketError, WinningsClaimed};
+
 use anchor_lang::prelude::*;
+
 use anchor_spl::token::transfer;
 use anchor_spl::token::{Mint, Token, TokenAccount, Transfer};
 
@@ -11,33 +13,63 @@ pub struct Claim<'info> {
     #[account(mut)]
     pub market: Account<'info, Market>,
 
-    #[account(mut,seeds=[b"position", claimer.key().as_ref(), market.key().as_ref()],
+    #[account(
+        mut,
+        seeds = [
+            b"position",
+            claimer.key().as_ref(),
+            market.key().as_ref()
+        ],
         bump = position.bump,
-        constraint = position.owner==claimer.key() @PredictionMarketError::InvalidPosition,
+        constraint = position.owner == claimer.key()
+            @ PredictionMarketError::InvalidPosition,
         constraint = position.market == market.key()
-            @ PredictionMarketError::InvalidPosition, )
-    ]
+            @ PredictionMarketError::InvalidPosition
+    )]
     pub position: Account<'info, Position>,
 
-    ///CHECK : PDA authority only
-    #[account(seeds=[b"vault", market.key().as_ref()], bump)]
+    /// CHECK: PDA authority for the vault.
+    #[account(
+        seeds = [
+            b"vault-authority",
+            market.key().as_ref()
+        ],
+        bump
+    )]
     pub vault_authority: UncheckedAccount<'info>,
 
-    #[account(mut, seeds = [b"vault", market.key().as_ref()],
+    #[account(
+        mut,
+        seeds = [
+            b"vault",
+            market.key().as_ref()
+        ],
         bump = market.vault_bump,
-        constraint=vault.mint ==market.payment_mint @PredictionMarketError::InvalidMint,
-        constraint = vault.owner == vault_authority.key() @PredictionMarketError::Unauthorized)
-    ]
+        constraint = vault.mint == market.payment_mint
+            @ PredictionMarketError::InvalidMint,
+        constraint = vault.owner == vault_authority.key()
+            @ PredictionMarketError::Unauthorized
+    )]
     pub vault: Account<'info, TokenAccount>,
 
-    #[account(constraint = market.payment_mint==payment_mint.key() @PredictionMarketError::InvalidMint)]
+    #[account(
+        constraint = payment_mint.key() == market.payment_mint
+            @ PredictionMarketError::InvalidMint
+    )]
     pub payment_mint: Account<'info, Mint>,
 
-    #[account(mut, token::authority=claimer, token::mint=payment_mint)]
+    #[account(
+        mut,
+        token::authority = claimer,
+        token::mint = payment_mint
+    )]
     pub claimer_token_account: Account<'info, TokenAccount>,
 
-    //Token Account belongs to protocol treasury
-    #[account(mut, token::mint=payment_mint,token::authority=market.treasury, constraint = tresury_token_account.owner!=market.treasury @PredictionMarketError::Unauthorized)]
+    #[account(
+        mut,
+        token::mint = payment_mint,
+        token::authority = market.treasury
+    )]
     pub tresury_token_account: Account<'info, TokenAccount>,
 
     pub token_program: Program<'info, Token>,
@@ -48,24 +80,26 @@ pub fn claim_winnings(ctx: Context<Claim>) -> Result<()> {
     let position = &mut ctx.accounts.position;
 
     require!(
-        market.outcome != Outcome::Unresolved,
+        market.outcome == Outcome::Yes || market.outcome == Outcome::No,
         PredictionMarketError::MarketNotResolved
     );
 
     require!(!position.claimed, PredictionMarketError::AlreadyClaimed);
 
+    require!(!position.refunded, PredictionMarketError::AlreadyRefunded);
+
     let winning_shares = match market.outcome {
-        Outcome::No => position.no_shares,
         Outcome::Yes => position.yes_shares,
-        Outcome::Unresolved => 0,
+        Outcome::No => position.no_shares,
+        Outcome::Unresolved | Outcome::Cancelled => 0,
     };
 
     require!(winning_shares > 0, PredictionMarketError::NoWinningShares);
 
     let total_winning_shares = match market.outcome {
-        Outcome::No => market.total_no,
         Outcome::Yes => market.total_yes,
-        Outcome::Unresolved => 0,
+        Outcome::No => market.total_no,
+        Outcome::Unresolved | Outcome::Cancelled => 0,
     };
 
     require!(
@@ -91,11 +125,10 @@ pub fn claim_winnings(ctx: Context<Claim>) -> Result<()> {
         .checked_sub(fee)
         .ok_or(PredictionMarketError::MathOverflow)?;
 
-
     let total_required = user_payout
         .checked_add(fee)
         .ok_or(PredictionMarketError::MathOverflow)?;
-    
+
     require!(
         ctx.accounts.vault.amount >= total_required,
         PredictionMarketError::InsufficientVaultFunds
@@ -145,6 +178,7 @@ pub fn claim_winnings(ctx: Context<Claim>) -> Result<()> {
     }
 
     position.claimed = true;
+    position.refunded = false;
 
     emit!(WinningsClaimed {
         claimer: ctx.accounts.claimer.key(),
@@ -153,5 +187,6 @@ pub fn claim_winnings(ctx: Context<Claim>) -> Result<()> {
         fee,
         payout: user_payout,
     });
+
     Ok(())
 }

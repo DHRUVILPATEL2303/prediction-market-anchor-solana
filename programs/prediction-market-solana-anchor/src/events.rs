@@ -37,3 +37,9 @@ pub struct WinningsClaimed {
     pub fee: u64,
     pub payout: u64,
 }
+
+#[event]
+pub struct MarketCancelled {
+    pub market: Pubkey,
+    pub authority: Pubkey,
+}

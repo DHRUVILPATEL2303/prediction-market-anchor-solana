@@ -42,4 +42,11 @@ pub mod prediction_market_solana_anchor {
         claim_winnings(ctx)?;
         Ok(())
     }
+
+    pub fn cancel_market_anchor(
+        ctx: Context<CancelMarket>,
+    ) -> Result<()> {
+        cancel_market(ctx)?;
+        Ok(())
+    }
 }
