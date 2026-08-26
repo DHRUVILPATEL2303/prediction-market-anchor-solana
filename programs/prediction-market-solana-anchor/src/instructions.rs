@@ -14,3 +14,5 @@ pub mod initialize_amm;
 pub use initialize_amm::*;
 pub mod mint_complete_set;
 pub use mint_complete_set::*;
+pub mod redeem_complete_set;
+pub use redeem_complete_set::*;

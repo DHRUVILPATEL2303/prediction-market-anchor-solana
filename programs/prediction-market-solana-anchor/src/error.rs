@@ -25,6 +25,9 @@ pub enum PredictionMarketError {
     #[msg("No Refund Available")]
     NoRefundAvailable,
 
+    #[msg("Insufficient Balance")]
+    InsufficientBalance,
+
     #[msg("Market Not Cancelled")]
     MarketNotCancelled,
 

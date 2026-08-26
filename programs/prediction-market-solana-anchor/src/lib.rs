@@ -62,4 +62,9 @@ pub mod prediction_market_solana_anchor {
         mint_complete_set(ctx, amount)?;
         Ok(())
     }
+
+    pub fn redeem_complete_set_anchor(ctx: Context<RedeemCompleteSet>, amount: u64) -> Result<()> {
+        redeem_complete_set(ctx, amount)?;
+        Ok(())
+    }
 }
