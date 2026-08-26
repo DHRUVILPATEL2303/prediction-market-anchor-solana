@@ -62,6 +62,9 @@ pub struct AmmPool {
     pub market : Pubkey ,
     pub yes_mint : Pubkey,
     pub no_mint : Pubkey,
+    pub payment_vault : Pubkey,
+    pub yes_vault : Pubkey,
+    pub no_vault : Pubkey,
     pub yes_reserve : u64, //liquidity reserve for yes
     pub no_reserve : u64,  //liquidity reserve for no
     pub lp_supply: u64,    //total_liquidity_supply shares 

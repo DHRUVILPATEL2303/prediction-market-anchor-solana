@@ -16,6 +16,9 @@ pub enum PredictionMarketError {
     #[msg("Question Must Not Be Empty")]
     QuestionIsTooLong,
 
+    #[msg("Invalid Market")]
+    InvalidMarket,
+
     #[msg("Unauthorized")]
     Unauthorized,
 

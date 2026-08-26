@@ -57,4 +57,9 @@ pub mod prediction_market_solana_anchor {
         initalize_amm(ctx, fee_bps)?;
         Ok(())
     }
+
+    pub fn mint_complete_set_anchor(ctx: Context<MintCompleteSet>, amount: u64) -> Result<()> {
+        mint_complete_set(ctx, amount)?;
+        Ok(())
+    }
 }
