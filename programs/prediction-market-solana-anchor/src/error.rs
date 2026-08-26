@@ -16,6 +16,10 @@ pub enum PredictionMarketError {
     #[msg("Question Must Not Be Empty")]
     QuestionIsTooLong,
 
+    #[msg("Invalid Liquidity Ratio")]
+    InvalidLiquidityRatio,
+    #[msg("Invalid Liquidity")]
+    InvalidLiquidity,
     #[msg("Invalid Market")]
     InvalidMarket,
 
