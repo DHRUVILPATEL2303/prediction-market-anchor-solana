@@ -56,4 +56,13 @@ pub struct  Position {
 
 
 
-
+#[account]
+#[derive(InitSpace)]
+pub struct AmmPool {
+    pub market : Pubkey ,
+    pub yes_reserve : u64, //liquidity reserve for yes
+    pub no_reserve : u64,  //liquidity reserve for no
+    pub lp_supply: u64,    //total_liquidity_supply shares 
+    pub fee_bps : u16,     //fee_in_basic_points
+    pub bump : u8
+}

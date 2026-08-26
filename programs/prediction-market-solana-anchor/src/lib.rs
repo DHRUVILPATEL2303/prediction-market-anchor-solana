@@ -52,4 +52,9 @@ pub mod prediction_market_solana_anchor {
         refund(ctx)?;
         Ok(())
     }
+
+    pub fn initialize_amm_anchor(ctx: Context<InitializeAmm>, fee_bps: u16) -> Result<()> {
+        initalize_amm(ctx, fee_bps)?;
+        Ok(())
+    }
 }
