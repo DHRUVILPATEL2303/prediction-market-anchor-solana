@@ -15,6 +15,7 @@ declare_id!("96GMnsCYX1oHM2fJoD7QMZqWT7TDLc6mq8soGJKVDggs");
 
 #[program]
 pub mod prediction_market_solana_anchor {
+
     use super::*;
 
     pub fn initialize_market_anchor(
@@ -53,9 +54,17 @@ pub mod prediction_market_solana_anchor {
         Ok(())
     }
 
-    pub fn initialize_amm_anchor(ctx: Context<InitializeAmm>, fee_bps: u16) -> Result<()> {
-        initalize_amm(ctx, fee_bps)?;
-        Ok(())
+    pub fn initialize_amm_anchor(
+        ctx: Context<InitializeAmm>,
+        fee_bps: u16,
+    ) -> Result<()> {
+        initialize_amm(ctx, fee_bps)
+    }
+    
+    pub fn initialize_amm_vaults_anchor(
+        ctx: Context<InitializeAmmVaults>,
+    ) -> Result<()> {
+        initialize_amm_vaults(ctx)
     }
 
     pub fn mint_complete_set_anchor(ctx: Context<MintCompleteSet>, amount: u64) -> Result<()> {

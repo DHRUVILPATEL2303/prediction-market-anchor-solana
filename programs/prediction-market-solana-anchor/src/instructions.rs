@@ -16,3 +16,5 @@ pub mod mint_complete_set;
 pub use mint_complete_set::*;
 pub mod redeem_complete_set;
 pub use redeem_complete_set::*;
+pub mod initialize_amm_vaults;
+pub use initialize_amm_vaults::*;

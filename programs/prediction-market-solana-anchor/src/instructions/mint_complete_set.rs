@@ -2,20 +2,24 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::transfer;
 use anchor_spl::token::{mint_to, Mint, MintTo, Token, TokenAccount, Transfer};
 
-use crate::{AmmPool, Market, Outcome, PredictionMarketError};
+use crate::{Market, Outcome, PredictionMarketError};
 
 #[derive(Accounts)]
 pub struct MintCompleteSet<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    #[account(seeds = [b"market", market.authority.as_ref(), &market.market_id.to_le_bytes()],bump=market.bump)]
-    pub market: Account<'info, Market>,
+    #[account(
+        seeds = [
+            b"market",
+            market.authority.as_ref(),
+            &market.market_id.to_le_bytes()
+        ],
+        bump = market.bump
+    )]
+    pub market:Box< Account<'info, Market>>,
 
-    #[account(seeds=[b"amm",market.key().as_ref()],bump=amm.bump, constraint = amm.market==market.key() @PredictionMarketError::InvalidMarket)]
-    pub amm: Account<'info, AmmPool>,
-
-    /// CHECK: PDA used only as authority of YES/NO token mints.
+    /// CHECK: PDA used as the mint authority for YES/NO outcome mints.
     #[account(
         seeds = [
             b"outcome-authority",
@@ -25,43 +29,66 @@ pub struct MintCompleteSet<'info> {
     )]
     pub outcome_authority: UncheckedAccount<'info>,
 
-    /// CHECK: PDA used only as authority of AMM token vaults.
     #[account(
+        mut,
         seeds = [
-            b"amm-authority",
+            b"payment-vault",
+            market.key().as_ref()
+        ],
+        bump,
+        constraint = payment_vault.mint == market.payment_mint
+            @ PredictionMarketError::InvalidMint
+    )]
+    pub payment_vault:Box< Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        constraint = user_payment_account.owner == user.key()
+            @ PredictionMarketError::Unauthorized,
+        constraint = user_payment_account.mint == market.payment_mint
+            @ PredictionMarketError::InvalidMint
+    )]
+    pub user_payment_account:Box< Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        seeds = [
+            b"yes-mint",
             market.key().as_ref()
         ],
         bump
     )]
-    pub amm_authority: UncheckedAccount<'info>,
+    pub yes_mint:Box< Account<'info, Mint>>,
 
     #[account(
         mut,
-        address = amm.payment_vault,
-        constraint = payment_vault.owner == amm_authority.key()
+        seeds = [
+            b"no-mint",
+            market.key().as_ref()
+        ],
+        bump
+    )]
+    pub no_mint:Box< Account<'info, Mint>>,
+
+    #[account(
+        mut,
+        constraint = user_yes_account.owner == user.key()
             @ PredictionMarketError::Unauthorized,
-        constraint = payment_vault.mint == market.payment_mint
+        constraint = user_yes_account.mint == yes_mint.key()
             @ PredictionMarketError::InvalidMint
     )]
-    pub payment_vault: Account<'info, TokenAccount>,
+    pub user_yes_account:Box< Account<'info, TokenAccount>>,
 
-    #[account(mut, constraint = user_payment_account.mint==market.payment_mint @PredictionMarketError::InvalidMint, constraint = user_payment_account.owner==user.key() @PredictionMarketError::Unauthorized)]
-    pub user_payment_account: Account<'info, TokenAccount>,
-
-    #[account(mut, address = amm.yes_mint)]
-    pub yes_mint: Account<'info, Mint>,
-
-    #[account(mut, address = amm.no_mint)]
-    pub no_mint: Account<'info, Mint>,
-
-    #[account(init_if_needed, payer=user, token::mint=yes_mint, token::authority=user)]
-    pub user_yes_account: Account<'info, TokenAccount>,
-
-    #[account(init_if_needed, payer=user, token::mint=no_mint, token::authority=user)]
-    pub user_no_account: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = user_no_account.owner == user.key()
+            @ PredictionMarketError::Unauthorized,
+        constraint = user_no_account.mint == no_mint.key()
+            @ PredictionMarketError::InvalidMint
+    )]
+    pub user_no_account:Box< Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
 }
 
 pub fn mint_complete_set(ctx: Context<MintCompleteSet>, amount: u64) -> Result<()> {

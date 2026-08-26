@@ -1,4 +1,3 @@
-use crate::error::PredictionMarketError::InvalidAmount;
 use crate::state::{Market, Position, Side};
 use crate::{Outcome, PredictionMarketError, SharesPurchased};
 use anchor_lang::prelude::*;

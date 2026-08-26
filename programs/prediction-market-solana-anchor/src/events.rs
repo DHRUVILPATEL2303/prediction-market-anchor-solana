@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{Market, Outcome, Side};
+use crate::{Outcome, Side};
 
 #[event]
 pub struct MarketCreated {
