@@ -1,8 +1,7 @@
-use crate::{AmmPool, Market, Outcome, PredictionMarketError};
 use anchor_lang::prelude::*;
-use anchor_spl::token::transfer;
-use anchor_spl::token::{Token, TokenAccount, Transfer};
+use anchor_spl::token::{mint_to, transfer, Mint, MintTo, Token, TokenAccount, Transfer};
 
+use crate::{AmmPool, LpPosition, Market, Outcome, PredictionMarketError};
 
 #[derive(Accounts)]
 pub struct AddLiquidity<'info> {
@@ -21,7 +20,10 @@ pub struct AddLiquidity<'info> {
 
     #[account(
         mut,
-        seeds = [b"amm", market.key().as_ref()],
+        seeds = [
+            b"amm",
+            market.key().as_ref()
+        ],
         bump = amm.bump,
         constraint = amm.market == market.key()
             @ PredictionMarketError::InvalidMarket
@@ -30,10 +32,23 @@ pub struct AddLiquidity<'info> {
 
     /// CHECK: PDA used only as AMM vault authority.
     #[account(
-        seeds = [b"amm-authority", market.key().as_ref()],
+        seeds = [
+            b"amm-authority",
+            market.key().as_ref()
+        ],
         bump
     )]
     pub amm_authority: UncheckedAccount<'info>,
+
+    /// CHECK: PDA used only as authority for YES/NO minting.
+    #[account(
+        seeds = [
+            b"outcome-authority",
+            market.key().as_ref()
+        ],
+        bump
+    )]
+    pub outcome_authority: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -47,26 +62,6 @@ pub struct AddLiquidity<'info> {
 
     #[account(
         mut,
-        address = amm.yes_vault,
-        constraint = yes_vault.owner == amm_authority.key()
-            @ PredictionMarketError::Unauthorized,
-        constraint = yes_vault.mint == amm.yes_mint
-            @ PredictionMarketError::InvalidMint
-    )]
-    pub yes_vault: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        mut,
-        address = amm.no_vault,
-        constraint = no_vault.owner == amm_authority.key()
-            @ PredictionMarketError::Unauthorized,
-        constraint = no_vault.mint == amm.no_mint
-            @ PredictionMarketError::InvalidMint
-    )]
-    pub no_vault: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        mut,
         constraint = provider_payment_account.owner == provider.key()
             @ PredictionMarketError::Unauthorized,
         constraint = provider_payment_account.mint == market.payment_mint
@@ -76,36 +71,56 @@ pub struct AddLiquidity<'info> {
 
     #[account(
         mut,
-        constraint = provider_yes_account.owner == provider.key()
-            @ PredictionMarketError::Unauthorized,
-        constraint = provider_yes_account.mint == amm.yes_mint
-            @ PredictionMarketError::InvalidMint
+        address = amm.yes_mint
     )]
-    pub provider_yes_account: Box<Account<'info, TokenAccount>>,
+    pub yes_mint: Box<Account<'info, Mint>>,
 
     #[account(
         mut,
-        constraint = provider_no_account.owner == provider.key()
+        address = amm.no_mint
+    )]
+    pub no_mint: Box<Account<'info, Mint>>,
+
+    #[account(
+        mut,
+        address = amm.yes_vault,
+        constraint = yes_vault.owner == amm_authority.key()
             @ PredictionMarketError::Unauthorized,
-        constraint = provider_no_account.mint == amm.no_mint
+        constraint = yes_vault.mint == yes_mint.key()
             @ PredictionMarketError::InvalidMint
     )]
-    pub provider_no_account: Box<Account<'info, TokenAccount>>,
+    pub yes_vault: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        address = amm.no_vault,
+        constraint = no_vault.owner == amm_authority.key()
+            @ PredictionMarketError::Unauthorized,
+        constraint = no_vault.mint == no_mint.key()
+            @ PredictionMarketError::InvalidMint
+    )]
+    pub no_vault: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        init_if_needed,
+        payer = provider,
+        space = 8 + LpPosition::INIT_SPACE,
+        seeds = [
+            b"lp-position",
+            provider.key().as_ref(),
+            amm.key().as_ref()
+        ],
+        bump
+    )]
+    pub lp_position: Box<Account<'info, LpPosition>>,
 
     pub token_program: Program<'info, Token>,
+
+    pub system_program: Program<'info, System>,
 }
 
-pub fn add_liquidity(
-    ctx: Context<AddLiquidity>,
-    payment_amount: u64,
-    yes_amount: u64,
-    no_amount: u64,
-) -> Result<()> {
+pub fn add_liquidity(ctx: Context<AddLiquidity>, payment_amount: u64) -> Result<()> {
     require!(payment_amount > 0, PredictionMarketError::InvalidAmount);
-
-    require!(yes_amount > 0, PredictionMarketError::InvalidAmount);
-
-    require!(no_amount > 0, PredictionMarketError::InvalidAmount);
 
     let market = &ctx.accounts.market;
 
@@ -120,19 +135,33 @@ pub fn add_liquidity(
 
     let amm = &mut ctx.accounts.amm;
 
+    let lp_position = &mut ctx.accounts.lp_position;
+
+    if lp_position.owner == Pubkey::default() {
+        lp_position.owner = ctx.accounts.provider.key();
+        lp_position.amm = amm.key();
+        lp_position.shares = 0;
+        lp_position.bump = ctx.bumps.lp_position;
+    } else {
+        require!(
+            lp_position.owner == ctx.accounts.provider.key(),
+            PredictionMarketError::Unauthorized
+        );
+
+        require!(
+            lp_position.amm == amm.key(),
+            PredictionMarketError::InvalidMarket
+        );
+    }
+
+    let yes_amount = payment_amount;
+    let no_amount = payment_amount;
+
     let old_yes = ctx.accounts.yes_vault.amount;
     let old_no = ctx.accounts.no_vault.amount;
 
-    if amm.lp_supply == 0 {
-        let lp_supply = integer_sqrt(
-            yes_amount
-                .checked_mul(no_amount)
-                .ok_or(PredictionMarketError::MathOverflow)?,
-        );
-
-        require!(lp_supply > 0, PredictionMarketError::InvalidAmount);
-
-        amm.lp_supply = lp_supply;
+    let minted_lp = if amm.lp_supply == 0 {
+        payment_amount
     } else {
         require!(
             old_yes > 0 && old_no > 0,
@@ -140,12 +169,7 @@ pub fn add_liquidity(
         );
 
         require!(
-            yes_amount
-                .checked_mul(old_no)
-                .ok_or(PredictionMarketError::MathOverflow)?
-                == no_amount
-                    .checked_mul(old_yes)
-                    .ok_or(PredictionMarketError::MathOverflow)?,
+            old_yes == old_no,
             PredictionMarketError::InvalidLiquidityRatio
         );
 
@@ -166,13 +190,10 @@ pub fn add_liquidity(
             PredictionMarketError::InvalidLiquidityRatio
         );
 
-        require!(lp_from_yes > 0, PredictionMarketError::InvalidAmount);
+        lp_from_yes
+    };
 
-        amm.lp_supply = amm
-            .lp_supply
-            .checked_add(lp_from_yes)
-            .ok_or(PredictionMarketError::MathOverflow)?;
-    }
+    require!(minted_lp > 0, PredictionMarketError::InvalidAmount);
 
     let payment_transfer = Transfer {
         from: ctx.accounts.provider_payment_account.to_account_info(),
@@ -187,31 +208,42 @@ pub fn add_liquidity(
 
     transfer(payment_ctx, payment_amount)?;
 
-    let yes_transfer = Transfer {
-        from: ctx.accounts.provider_yes_account.to_account_info(),
+    let market_key = market.key();
+
+    let outcome_bump = [ctx.bumps.outcome_authority];
+
+    let outcome_signer_seeds: &[&[u8]] =
+        &[b"outcome-authority", market_key.as_ref(), &outcome_bump];
+
+    let outcome_signer: &[&[&[u8]]] = &[outcome_signer_seeds];
+
+    let yes_mint_accounts = MintTo {
+        mint: ctx.accounts.yes_mint.to_account_info(),
         to: ctx.accounts.yes_vault.to_account_info(),
-        authority: ctx.accounts.provider.to_account_info(),
+        authority: ctx.accounts.outcome_authority.to_account_info(),
     };
 
-    let yes_ctx = CpiContext::new(
+    let yes_mint_ctx = CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info().key(),
-        yes_transfer,
+        yes_mint_accounts,
+        outcome_signer,
     );
 
-    transfer(yes_ctx, yes_amount)?;
+    mint_to(yes_mint_ctx, yes_amount)?;
 
-    let no_transfer = Transfer {
-        from: ctx.accounts.provider_no_account.to_account_info(),
+    let no_mint_accounts = MintTo {
+        mint: ctx.accounts.no_mint.to_account_info(),
         to: ctx.accounts.no_vault.to_account_info(),
-        authority: ctx.accounts.provider.to_account_info(),
+        authority: ctx.accounts.outcome_authority.to_account_info(),
     };
 
-    let no_ctx = CpiContext::new(
+    let no_mint_ctx = CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info().key(),
-        no_transfer,
+        no_mint_accounts,
+        outcome_signer,
     );
 
-    transfer(no_ctx, no_amount)?;
+    mint_to(no_mint_ctx, no_amount)?;
 
     amm.yes_reserve = old_yes
         .checked_add(yes_amount)
@@ -221,21 +253,15 @@ pub fn add_liquidity(
         .checked_add(no_amount)
         .ok_or(PredictionMarketError::MathOverflow)?;
 
+    amm.lp_supply = amm
+        .lp_supply
+        .checked_add(minted_lp)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+
+    lp_position.shares = lp_position
+        .shares
+        .checked_add(minted_lp)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+
     Ok(())
-}
-
-fn integer_sqrt(value: u64) -> u64 {
-    if value == 0 {
-        return 0;
-    }
-
-    let mut x = value;
-    let mut y = (x + 1) / 2;
-
-    while y < x {
-        x = y;
-        y = (x + value / x) / 2;
-    }
-
-    x
 }

@@ -71,3 +71,12 @@ pub struct AmmPool {
     pub fee_bps : u16,     //fee_in_basic_points
     pub bump : u8
 }
+
+#[account]
+#[derive(InitSpace)]
+pub struct LpPosition {
+    pub owner : Pubkey,
+    pub amm : Pubkey,
+    pub shares : u64,
+    pub bump : u8
+}

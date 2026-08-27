@@ -77,8 +77,8 @@ pub mod prediction_market_solana_anchor {
         Ok(())
     }
 
-    pub fn add_liquidity_anchor(ctx: Context<AddLiquidity>, payment_amount : u64, yes_amount : u64, no_amount : u64) -> Result<()> {
-        add_liquidity(ctx, payment_amount, yes_amount, no_amount)?;
+    pub fn add_liquidity_anchor(ctx: Context<AddLiquidity>, payment_amount : u64) -> Result<()> {
+        add_liquidity(ctx, payment_amount)?;
         Ok(())
     }
 }
