@@ -81,4 +81,9 @@ pub mod prediction_market_solana_anchor {
         add_liquidity(ctx, payment_amount)?;
         Ok(())
     }
+
+    pub fn swap_anchor(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64, direction: SwapDirection) -> Result<()> {
+        swap(ctx, amount_in, min_amount_out, direction)?;
+        Ok(())
+    }
 }

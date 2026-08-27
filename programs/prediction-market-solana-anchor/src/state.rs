@@ -80,3 +80,11 @@ pub struct LpPosition {
     pub shares : u64,
     pub bump : u8
 }
+
+#[derive(AnchorSerialize,AnchorDeserialize,Clone,Copy,PartialEq, Eq,InitSpace)]
+pub enum SwapDirection {
+    UsdcToYes,
+    UsdcToNo,
+    YesToUsdc,
+    NoToUsdc,
+}
