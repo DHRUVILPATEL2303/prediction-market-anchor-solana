@@ -19,6 +19,9 @@ pub enum PredictionMarketError {
     #[msg("Invalid Liquidity Ratio")]
     InvalidLiquidityRatio,
 
+    #[msg("Insufficient Lp Shares")]
+    InsufficientLpShares,
+
     #[msg("Insufficient Liquidity")]
     InsufficientLiquidity,
     #[msg("Slippage Exceeded")]

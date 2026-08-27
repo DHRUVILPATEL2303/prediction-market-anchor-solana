@@ -86,4 +86,12 @@ pub mod prediction_market_solana_anchor {
         swap(ctx, amount_in, min_amount_out, direction)?;
         Ok(())
     }
+
+
+    pub fn remove_liquidity_anchor(
+        ctx: Context<RemoveLiquidity>,
+        shares: u64,
+    ) -> Result<()> {
+        instructions::remove_liquidity::remove_liquidity(ctx, shares)
+    }
 }
