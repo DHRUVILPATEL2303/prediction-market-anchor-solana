@@ -113,8 +113,10 @@ pub fn swap(
 
     require!(now < market.end_time, PredictionMarketError::MarketClosed);
 
+    let amm = &mut ctx.accounts.amm;
+
     let fee = (amount_in as u128)
-        .checked_mul(ctx.accounts.amm.fee_bps as u128)
+        .checked_mul(amm.fee_bps as u128)
         .ok_or(PredictionMarketError::MathOverflow)?
         .checked_div(10_000)
         .ok_or(PredictionMarketError::MathOverflow)?;
@@ -130,19 +132,227 @@ pub fn swap(
 
     match direction {
         SwapDirection::UsdcToYes => {
-            swap_usdc_to_token(&ctx, amount_in, amount_in_after_fee, min_amount_out, true)?;
+            let payment_reserve = ctx.accounts.payment_vault.amount;
+            let yes_reserve = ctx.accounts.yes_vault.amount;
+
+            let amount_out = calculate_amount_out(
+                payment_reserve,
+                yes_reserve,
+                amount_in_after_fee,
+            )?;
+
+            require!(
+                amount_out >= min_amount_out,
+                PredictionMarketError::SlippageExceeded
+            );
+
+            require!(
+                ctx.accounts.user_payment_account.amount >= amount_in,
+                PredictionMarketError::InsufficientBalance
+            );
+
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info().key(),
+                    Transfer {
+                        from: ctx.accounts.user_payment_account.to_account_info(),
+                        to: ctx.accounts.payment_vault.to_account_info(),
+                        authority: ctx.accounts.user.to_account_info(),
+                    },
+                ),
+                amount_in,
+            )?;
+
+            let market_key = market.key();
+            let bump = [ctx.bumps.amm_authority];
+
+            let signer_seeds: &[&[u8]] =
+                &[b"amm-authority", market_key.as_ref(), &bump];
+
+            transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info().key(),
+                    Transfer {
+                        from: ctx.accounts.yes_vault.to_account_info(),
+                        to: ctx.accounts.user_yes_account.to_account_info(),
+                        authority: ctx.accounts.amm_authority.to_account_info(),
+                    },
+                    &[signer_seeds],
+                ),
+                amount_out,
+            )?;
+
+            amm.yes_reserve = yes_reserve
+                .checked_sub(amount_out)
+                .ok_or(PredictionMarketError::MathOverflow)?;
         }
 
         SwapDirection::UsdcToNo => {
-            swap_usdc_to_token(&ctx, amount_in, amount_in_after_fee, min_amount_out, false)?;
+            let payment_reserve = ctx.accounts.payment_vault.amount;
+            let no_reserve = ctx.accounts.no_vault.amount;
+
+            let amount_out = calculate_amount_out(
+                payment_reserve,
+                no_reserve,
+                amount_in_after_fee,
+            )?;
+
+            require!(
+                amount_out >= min_amount_out,
+                PredictionMarketError::SlippageExceeded
+            );
+
+            require!(
+                ctx.accounts.user_payment_account.amount >= amount_in,
+                PredictionMarketError::InsufficientBalance
+            );
+
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info().key(),
+                    Transfer {
+                        from: ctx.accounts.user_payment_account.to_account_info(),
+                        to: ctx.accounts.payment_vault.to_account_info(),
+                        authority: ctx.accounts.user.to_account_info(),
+                    },
+                ),
+                amount_in,
+            )?;
+
+            let market_key = market.key();
+            let bump = [ctx.bumps.amm_authority];
+
+            let signer_seeds: &[&[u8]] =
+                &[b"amm-authority", market_key.as_ref(), &bump];
+
+            transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info().key(),
+                    Transfer {
+                        from: ctx.accounts.no_vault.to_account_info(),
+                        to: ctx.accounts.user_no_account.to_account_info(),
+                        authority: ctx.accounts.amm_authority.to_account_info(),
+                    },
+                    &[signer_seeds],
+                ),
+                amount_out,
+            )?;
+
+            amm.no_reserve = no_reserve
+                .checked_sub(amount_out)
+                .ok_or(PredictionMarketError::MathOverflow)?;
         }
 
         SwapDirection::YesToUsdc => {
-            swap_token_to_usdc(&ctx, amount_in, amount_in_after_fee, min_amount_out, true)?;
+            let yes_reserve = ctx.accounts.yes_vault.amount;
+            let payment_reserve = ctx.accounts.payment_vault.amount;
+
+            let amount_out = calculate_amount_out(
+                yes_reserve,
+                payment_reserve,
+                amount_in_after_fee,
+            )?;
+
+            require!(
+                amount_out >= min_amount_out,
+                PredictionMarketError::SlippageExceeded
+            );
+
+            require!(
+                ctx.accounts.user_yes_account.amount >= amount_in,
+                PredictionMarketError::InsufficientBalance
+            );
+
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info().key(),
+                    Transfer {
+                        from: ctx.accounts.user_yes_account.to_account_info(),
+                        to: ctx.accounts.yes_vault.to_account_info(),
+                        authority: ctx.accounts.user.to_account_info(),
+                    },
+                ),
+                amount_in,
+            )?;
+
+            let market_key = market.key();
+            let bump = [ctx.bumps.amm_authority];
+
+            let signer_seeds: &[&[u8]] =
+                &[b"amm-authority", market_key.as_ref(), &bump];
+
+            transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info().key(),
+                    Transfer {
+                        from: ctx.accounts.payment_vault.to_account_info(),
+                        to: ctx.accounts.user_payment_account.to_account_info(),
+                        authority: ctx.accounts.amm_authority.to_account_info(),
+                    },
+                    &[signer_seeds],
+                ),
+                amount_out,
+            )?;
+
+            amm.yes_reserve = yes_reserve
+                .checked_add(amount_in)
+                .ok_or(PredictionMarketError::MathOverflow)?;
         }
 
         SwapDirection::NoToUsdc => {
-            swap_token_to_usdc(&ctx, amount_in, amount_in_after_fee, min_amount_out, false)?;
+            let no_reserve = ctx.accounts.no_vault.amount;
+            let payment_reserve = ctx.accounts.payment_vault.amount;
+
+            let amount_out = calculate_amount_out(
+                no_reserve,
+                payment_reserve,
+                amount_in_after_fee,
+            )?;
+
+            require!(
+                amount_out >= min_amount_out,
+                PredictionMarketError::SlippageExceeded
+            );
+
+            require!(
+                ctx.accounts.user_no_account.amount >= amount_in,
+                PredictionMarketError::InsufficientBalance
+            );
+
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info().key(),
+                    Transfer {
+                        from: ctx.accounts.user_no_account.to_account_info(),
+                        to: ctx.accounts.no_vault.to_account_info(),
+                        authority: ctx.accounts.user.to_account_info(),
+                    },
+                ),
+                amount_in,
+            )?;
+
+            let market_key = market.key();
+            let bump = [ctx.bumps.amm_authority];
+
+            let signer_seeds: &[&[u8]] =
+                &[b"amm-authority", market_key.as_ref(), &bump];
+
+            transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info().key(),
+                    Transfer {
+                        from: ctx.accounts.payment_vault.to_account_info(),
+                        to: ctx.accounts.user_payment_account.to_account_info(),
+                        authority: ctx.accounts.amm_authority.to_account_info(),
+                    },
+                    &[signer_seeds],
+                ),
+                amount_out,
+            )?;
+
+            amm.no_reserve = no_reserve
+                .checked_add(amount_in)
+                .ok_or(PredictionMarketError::MathOverflow)?;
         }
     }
 
