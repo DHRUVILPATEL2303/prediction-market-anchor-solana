@@ -1,13 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{transfer, Token, TokenAccount, Transfer};
 
-use crate::{
-    AmmPool,
-    LpPosition,
-    Market,
-    Outcome,
-    PredictionMarketError,
-};
+use crate::{AmmPool, LpPosition, Market, Outcome, PredictionMarketError};
 
 #[derive(Accounts)]
 pub struct RemoveLiquidity<'info> {
@@ -48,16 +42,6 @@ pub struct RemoveLiquidity<'info> {
 
     #[account(
         mut,
-        address = amm.payment_vault,
-        constraint = payment_vault.owner == amm_authority.key()
-            @ PredictionMarketError::Unauthorized,
-        constraint = payment_vault.mint == market.payment_mint
-            @ PredictionMarketError::InvalidMint
-    )]
-    pub payment_vault: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        mut,
         address = amm.yes_vault,
         constraint = yes_vault.owner == amm_authority.key()
             @ PredictionMarketError::Unauthorized,
@@ -75,15 +59,6 @@ pub struct RemoveLiquidity<'info> {
             @ PredictionMarketError::InvalidMint
     )]
     pub no_vault: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        mut,
-        constraint = provider_payment_account.owner == provider.key()
-            @ PredictionMarketError::Unauthorized,
-        constraint = provider_payment_account.mint == market.payment_mint
-            @ PredictionMarketError::InvalidMint
-    )]
-    pub provider_payment_account: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -121,14 +96,8 @@ pub struct RemoveLiquidity<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn remove_liquidity(
-    ctx: Context<RemoveLiquidity>,
-    shares: u64,
-) -> Result<()> {
-    require!(
-        shares > 0,
-        PredictionMarketError::InvalidAmount
-    );
+pub fn remove_liquidity(ctx: Context<RemoveLiquidity>, shares: u64) -> Result<()> {
+    require!(shares > 0, PredictionMarketError::InvalidAmount);
 
     let market = &ctx.accounts.market;
     let amm = &mut ctx.accounts.amm;
@@ -141,30 +110,17 @@ pub fn remove_liquidity(
 
     let now = Clock::get()?.unix_timestamp;
 
-    require!(
-        now < market.end_time,
-        PredictionMarketError::MarketClosed
-    );
+    require!(now < market.end_time, PredictionMarketError::MarketClosed);
 
-    require!(
-        amm.lp_supply > 0,
-        PredictionMarketError::InvalidLiquidity
-    );
+    require!(amm.lp_supply > 0, PredictionMarketError::InvalidLiquidity);
 
     require!(
         shares <= lp_position.shares,
         PredictionMarketError::InsufficientLpShares
     );
 
-    let payment_reserve = ctx.accounts.payment_vault.amount;
     let yes_reserve = ctx.accounts.yes_vault.amount;
     let no_reserve = ctx.accounts.no_vault.amount;
-
-    let payment_out = payment_reserve
-        .checked_mul(shares)
-        .ok_or(PredictionMarketError::MathOverflow)?
-        .checked_div(amm.lp_supply)
-        .ok_or(PredictionMarketError::MathOverflow)?;
 
     let yes_out = yes_reserve
         .checked_mul(shares)
@@ -179,36 +135,16 @@ pub fn remove_liquidity(
         .ok_or(PredictionMarketError::MathOverflow)?;
 
     require!(
-        payment_out > 0 || yes_out > 0 || no_out > 0,
+        yes_out > 0 || no_out > 0,
         PredictionMarketError::InvalidAmount
     );
 
     let market_key = market.key();
     let authority_bump = [ctx.bumps.amm_authority];
 
-    let authority_seeds: &[&[u8]] = &[
-        b"amm-authority",
-        market_key.as_ref(),
-        &authority_bump,
-    ];
+    let authority_seeds: &[&[u8]] = &[b"amm-authority", market_key.as_ref(), &authority_bump];
 
     let signer_seeds: &[&[&[u8]]] = &[authority_seeds];
-
-    if payment_out > 0 {
-        let accounts = Transfer {
-            from: ctx.accounts.payment_vault.to_account_info(),
-            to: ctx.accounts.provider_payment_account.to_account_info(),
-            authority: ctx.accounts.amm_authority.to_account_info(),
-        };
-
-        let transfer_ctx = CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info().key(),
-            accounts,
-            signer_seeds,
-        );
-
-        transfer(transfer_ctx, payment_out)?;
-    }
 
     if yes_out > 0 {
         let accounts = Transfer {

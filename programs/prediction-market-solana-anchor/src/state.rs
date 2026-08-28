@@ -36,25 +36,6 @@ pub enum Outcome {
 }
 
 
-#[derive(AnchorDeserialize, AnchorSerialize, Clone, Copy, PartialEq, Eq,InitSpace)]
-pub enum Side {
-    Yes,
-    No,
-}
-
-#[account]
-#[derive(InitSpace)]
-pub struct  Position {
-    pub owner: Pubkey,
-    pub market: Pubkey,   
-    pub yes_shares: u64,
-    pub no_shares: u64,
-    pub claimed: bool,
-    pub refunded : bool,
-    pub bump: u8,
-}
-
-
 
 #[account]
 #[derive(InitSpace)]
