@@ -1,7 +1,7 @@
 use crate::{AmmPool, Market, Outcome, PredictionMarketError, SwapDirection};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{
-    burn, mint_to, transfer, Burn, Mint, MintTo, Token, TokenAccount, Transfer,
+    mint_to, transfer, Mint, MintTo, Token, TokenAccount, Transfer,
 };
 
 #[derive(Accounts)]
@@ -155,7 +155,6 @@ pub fn swap(
         SwapDirection::UsdcToYes => {
             transfer_usdc_to_vault(&ctx, amount_in)?;
             mint_complete_set_to_user(&ctx, amount_in)?;
-            // Swap NO for YES
             swap_outcome_tokens(
                 &mut ctx,
                 amount_in,
@@ -167,7 +166,6 @@ pub fn swap(
         SwapDirection::UsdcToNo => {
             transfer_usdc_to_vault(&ctx, amount_in)?;
             mint_complete_set_to_user(&ctx, amount_in)?;
-            // Swap YES for NO
             swap_outcome_tokens(
                 &mut ctx,
                 amount_in,
@@ -176,27 +174,23 @@ pub fn swap(
                 false,
             )?;
         }
-        SwapDirection::YesToUsdc => {
-            // Swap YES for NO
-            let amount_out = swap_outcome_tokens(
+        SwapDirection::YesToNo => {
+            swap_outcome_tokens(
                 &mut ctx,
                 amount_in,
                 amount_in_after_fee,
                 min_amount_out,
                 false,
             )?;
-            burn_complete_set_and_redeem(&ctx, amount_out)?;
         }
-        SwapDirection::NoToUsdc => {
-            // Swap NO for YES
-            let amount_out = swap_outcome_tokens(
+        SwapDirection::NoToYes => {
+            swap_outcome_tokens(
                 &mut ctx,
                 amount_in,
                 amount_in_after_fee,
                 min_amount_out,
                 true,
             )?;
-            burn_complete_set_and_redeem(&ctx, amount_out)?;
         }
     }
 
@@ -254,49 +248,6 @@ fn mint_complete_set_to_user<'info>(ctx: &Context<'_, Swap<'info>>, amount: u64)
     Ok(())
 }
 
-fn burn_complete_set_and_redeem<'info>(ctx: &Context<'_, Swap<'info>>, amount: u64) -> Result<()> {
-    burn(
-        CpiContext::new(
-            ctx.accounts.token_program.key(),
-            Burn {
-                mint: ctx.accounts.yes_mint.to_account_info(),
-                from: ctx.accounts.user_yes_account.to_account_info(),
-                authority: ctx.accounts.user.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-    burn(
-        CpiContext::new(
-            ctx.accounts.token_program.key(),
-            Burn {
-                mint: ctx.accounts.no_mint.to_account_info(),
-                from: ctx.accounts.user_no_account.to_account_info(),
-                authority: ctx.accounts.user.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-
-    let market_key = ctx.accounts.market.key();
-    let amm_bump = [ctx.bumps.amm_authority];
-    let amm_signer_seeds: &[&[u8]] = &[b"amm-authority", market_key.as_ref(), &amm_bump];
-
-    transfer(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.key(),
-            Transfer {
-                from: ctx.accounts.payment_vault.to_account_info(),
-                to: ctx.accounts.user_payment_account.to_account_info(),
-                authority: ctx.accounts.amm_authority.to_account_info(),
-            },
-            &[amm_signer_seeds],
-        ),
-        amount,
-    )?;
-
-    Ok(())
-}
 
 fn calculate_amount_out(
     reserve_in: u64,

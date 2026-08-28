@@ -66,6 +66,6 @@ pub struct LpPosition {
 pub enum SwapDirection {
     UsdcToYes,
     UsdcToNo,
-    YesToUsdc,
-    NoToUsdc,
+    YesToNo,
+    NoToYes,
 }
