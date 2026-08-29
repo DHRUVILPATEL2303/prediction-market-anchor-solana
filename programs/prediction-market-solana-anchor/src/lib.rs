@@ -12,7 +12,7 @@ pub use events::*;
 use instructions::*;
 pub use state::*; // NOTE: private use of instructions::*; to bring Context structs into scope
 
-declare_id!("96GMnsCYX1oHM2fJoD7QMZqWT7TDLc6mq8soGJKVDggs");
+declare_id!("7PBhPD5n3Qe18BoFR4uiRNVTCoqz3RYh9mypf6CC3tww");
 
 #[program]
 pub mod prediction_market_solana_anchor {

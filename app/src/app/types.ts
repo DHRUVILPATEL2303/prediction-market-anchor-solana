@@ -22,3 +22,12 @@ export interface PositionAccount {
   claimed: boolean;
   refunded: boolean; // new field in IDL
 }
+
+export interface AmmAccount {
+  publicKey: string;
+  market: string;
+  yesReserve: string;
+  noReserve: string;
+  lpSupply: string;
+  feeBps: number;
+}

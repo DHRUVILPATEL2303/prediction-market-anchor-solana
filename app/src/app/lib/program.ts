@@ -1,18 +1,17 @@
 "use client";
 
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { TOKEN_PROGRAM_ID, createAssociatedTokenAccountIdempotentInstruction } from "@solana/spl-token";
 import { useMemo, useCallback } from "react";
 import { Program, AnchorProvider, BN, Idl, Wallet, utils } from "@coral-xyz/anchor";
 import idl from "../idl.json";
 import { MarketAccount } from "../types";
 
-const PROGRAM_ID = new PublicKey(
-  "96GMnsCYX1oHM2fJoD7QMZqWT7TDLc6mq8soGJKVDggs"
+export const PROGRAM_ID = new PublicKey(
+  "7PBhPD5n3Qe18BoFR4uiRNVTCoqz3RYh9mypf6CC3tww"
 );
-
-
+export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
 export function useProgram() {
   const { connection } = useConnection();
@@ -36,7 +35,7 @@ export function useProgram() {
 }
 
 export function useMarketActions() {
-  const { program, wallet } = useProgram();
+  const { program, wallet, connection } = useProgram();
 
   async function createMarket(
     question: string,
@@ -47,36 +46,18 @@ export function useMarketActions() {
   ) {
     if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
 
-    // Generate a unique market ID using timestamp since there is no on-chain counter
     const marketIdBN = new BN(Date.now());
     const paymentMint = new PublicKey(paymentMintAddress);
 
     const [marketPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("market"),
-        wallet.publicKey.toBuffer(),
-        marketIdBN.toArrayLike(Buffer, "le", 8),
-      ],
+      [Buffer.from("market"), wallet.publicKey.toBuffer(), marketIdBN.toArrayLike(Buffer, "le", 8)],
       PROGRAM_ID
     );
+    const [vaultAuthority] = PublicKey.findProgramAddressSync([Buffer.from("vault-authority"), marketPda.toBuffer()], PROGRAM_ID);
+    const [vault] = PublicKey.findProgramAddressSync([Buffer.from("vault"), marketPda.toBuffer()], PROGRAM_ID);
 
-    const [vaultAuthority] = PublicKey.findProgramAddressSync(
-      [Buffer.from("vault-authority"), marketPda.toBuffer()],
-      PROGRAM_ID
-    );
-
-    const [vault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("vault"), marketPda.toBuffer()],
-      PROGRAM_ID
-    );
-
-    const tx = await program.methods
-      .initializeMarketAnchor(
-        marketIdBN,
-        question,
-        new BN(endTimeUnix),
-        feeBps
-      )
+    const ixMarket = await program.methods
+      .initializeMarket(marketIdBN, question, new BN(endTimeUnix), feeBps)
       .accounts({
         owner: wallet.publicKey,
         market: marketPda,
@@ -85,12 +66,139 @@ export function useMarketActions() {
         paymentMint,
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
-        // Treasury must be a system-owned account (wallet address works perfectly)
         treasury: treasuryAddress ? new PublicKey(treasuryAddress) : wallet.publicKey,
       })
-      .rpc();
+      .instruction();
 
-    return { tx, marketPda: marketPda.toString() };
+    const [amm] = PublicKey.findProgramAddressSync([Buffer.from("amm"), marketPda.toBuffer()], PROGRAM_ID);
+    const [outcomeAuthority] = PublicKey.findProgramAddressSync([Buffer.from("outcome-authority"), marketPda.toBuffer()], PROGRAM_ID);
+    const [yesMint] = PublicKey.findProgramAddressSync([Buffer.from("yes-mint"), marketPda.toBuffer()], PROGRAM_ID);
+    const [noMint] = PublicKey.findProgramAddressSync([Buffer.from("no-mint"), marketPda.toBuffer()], PROGRAM_ID);
+
+    const ixAmm = await program.methods.initializeAmm(feeBps).accounts({
+        authority: wallet.publicKey,
+        market: marketPda,
+        amm,
+        outcomeAuthority,
+        yesMint,
+        noMint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+    }).instruction();
+
+    const [ammAuthority] = PublicKey.findProgramAddressSync([Buffer.from("amm-authority"), marketPda.toBuffer()], PROGRAM_ID);
+    const [paymentVault] = PublicKey.findProgramAddressSync([Buffer.from("payment-vault"), marketPda.toBuffer()], PROGRAM_ID);
+    const [yesVault] = PublicKey.findProgramAddressSync([Buffer.from("yes-vault"), marketPda.toBuffer()], PROGRAM_ID);
+    const [noVault] = PublicKey.findProgramAddressSync([Buffer.from("no-vault"), marketPda.toBuffer()], PROGRAM_ID);
+
+    const ixAmmVaults = await program.methods.initializeAmmVaults().accounts({
+        authority: wallet.publicKey,
+        market: marketPda,
+        amm,
+        ammAuthority,
+        paymentMint,
+        yesMint,
+        noMint,
+        paymentVault,
+        yesVault,
+        noVault,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+    }).instruction();
+
+    const tx = new Transaction().add(ixMarket).add(ixAmm).add(ixAmmVaults);
+    const signature = await wallet.sendTransaction(tx, connection);
+    return { tx: signature, marketPda: marketPda.toString() };
+  }
+
+  async function addLiquidity(
+    marketPubkey: string,
+    amount: number,
+    paymentMintAddress: string,
+    providerTokenAccount: string
+  ) {
+    if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
+
+    const market = new PublicKey(marketPubkey);
+    const providerTA = new PublicKey(providerTokenAccount);
+    const paymentAmountBN = new BN(amount);
+
+    const [amm] = PublicKey.findProgramAddressSync([Buffer.from("amm"), market.toBuffer()], PROGRAM_ID);
+    const [ammAuthority] = PublicKey.findProgramAddressSync([Buffer.from("amm-authority"), market.toBuffer()], PROGRAM_ID);
+    const [outcomeAuthority] = PublicKey.findProgramAddressSync([Buffer.from("outcome-authority"), market.toBuffer()], PROGRAM_ID);
+    const [yesMint] = PublicKey.findProgramAddressSync([Buffer.from("yes-mint"), market.toBuffer()], PROGRAM_ID);
+    const [noMint] = PublicKey.findProgramAddressSync([Buffer.from("no-mint"), market.toBuffer()], PROGRAM_ID);
+    const [paymentVault] = PublicKey.findProgramAddressSync([Buffer.from("payment-vault"), market.toBuffer()], PROGRAM_ID);
+    const [yesVault] = PublicKey.findProgramAddressSync([Buffer.from("yes-vault"), market.toBuffer()], PROGRAM_ID);
+    const [noVault] = PublicKey.findProgramAddressSync([Buffer.from("no-vault"), market.toBuffer()], PROGRAM_ID);
+    
+    const [lpPosition] = PublicKey.findProgramAddressSync(
+      [Buffer.from("lp-position"), wallet.publicKey.toBuffer(), amm.toBuffer()],
+      PROGRAM_ID
+    );
+
+    const tx = await program.methods
+      .addLiquidity(paymentAmountBN)
+      .accounts({
+        provider: wallet.publicKey,
+        market,
+        amm,
+        ammAuthority,
+        outcomeAuthority,
+        yesMint,
+        noMint,
+        paymentVault,
+        yesVault,
+        noVault,
+        lpPosition,
+        providerPaymentAccount: providerTA,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    return { tx };
+  }
+
+  async function removeLiquidity(
+    marketPubkey: string,
+    shares: number,
+    providerTokenAccount: string
+  ) {
+    if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
+
+    const market = new PublicKey(marketPubkey);
+    const providerTA = new PublicKey(providerTokenAccount);
+    const sharesBN = new BN(shares);
+
+    const [amm] = PublicKey.findProgramAddressSync([Buffer.from("amm"), market.toBuffer()], PROGRAM_ID);
+    const [ammAuthority] = PublicKey.findProgramAddressSync([Buffer.from("amm-authority"), market.toBuffer()], PROGRAM_ID);
+    const [outcomeAuthority] = PublicKey.findProgramAddressSync([Buffer.from("outcome-authority"), market.toBuffer()], PROGRAM_ID);
+    const [yesMint] = PublicKey.findProgramAddressSync([Buffer.from("yes-mint"), market.toBuffer()], PROGRAM_ID);
+    const [noMint] = PublicKey.findProgramAddressSync([Buffer.from("no-mint"), market.toBuffer()], PROGRAM_ID);
+    const [paymentVault] = PublicKey.findProgramAddressSync([Buffer.from("payment-vault"), market.toBuffer()], PROGRAM_ID);
+    const [yesVault] = PublicKey.findProgramAddressSync([Buffer.from("yes-vault"), market.toBuffer()], PROGRAM_ID);
+    const [noVault] = PublicKey.findProgramAddressSync([Buffer.from("no-vault"), market.toBuffer()], PROGRAM_ID);
+    const [lpPosition] = PublicKey.findProgramAddressSync([Buffer.from("lp-position"), wallet.publicKey.toBuffer(), amm.toBuffer()], PROGRAM_ID);
+
+    const tx = await program.methods
+      .removeLiquidity(sharesBN)
+      .accounts({
+        provider: wallet.publicKey,
+        market,
+        amm,
+        ammAuthority,
+        outcomeAuthority,
+        yesMint,
+        noMint,
+        paymentVault,
+        yesVault,
+        noVault,
+        lpPosition,
+        providerPaymentAccount: providerTA,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+    return { tx };
   }
 
   async function buyShares(
@@ -103,41 +211,135 @@ export function useMarketActions() {
     if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
 
     const market = new PublicKey(marketPubkey);
-    const paymentMint = new PublicKey(paymentMintAddress);
     const buyerTA = new PublicKey(buyerTokenAccount);
 
-    const [position] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("position"),
-        wallet.publicKey.toBuffer(),
-        market.toBuffer(),
-      ],
-      PROGRAM_ID
+    const [amm] = PublicKey.findProgramAddressSync([Buffer.from("amm"), market.toBuffer()], PROGRAM_ID);
+    const [ammAuthority] = PublicKey.findProgramAddressSync([Buffer.from("amm-authority"), market.toBuffer()], PROGRAM_ID);
+    const [outcomeAuthority] = PublicKey.findProgramAddressSync([Buffer.from("outcome-authority"), market.toBuffer()], PROGRAM_ID);
+    
+    const [yesMint] = PublicKey.findProgramAddressSync([Buffer.from("yes-mint"), market.toBuffer()], PROGRAM_ID);
+    const [noMint] = PublicKey.findProgramAddressSync([Buffer.from("no-mint"), market.toBuffer()], PROGRAM_ID);
+    
+    const [paymentVault] = PublicKey.findProgramAddressSync([Buffer.from("payment-vault"), market.toBuffer()], PROGRAM_ID);
+    const [yesVault] = PublicKey.findProgramAddressSync([Buffer.from("yes-vault"), market.toBuffer()], PROGRAM_ID);
+    const [noVault] = PublicKey.findProgramAddressSync([Buffer.from("no-vault"), market.toBuffer()], PROGRAM_ID);
+
+    const [userYesAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), yesMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    const [userNoAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), noMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
     );
 
-    const [vault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("vault"), market.toBuffer()],
-      PROGRAM_ID
-    );
-
-    const sideArg = side === "Yes" ? { yes: {} } : { no: {} };
     const amountBN = new BN(amount);
+    const minAmountOutBN = new BN(0);
+    const directionArg = side === "Yes" ? { usdcToYes: {} } : { usdcToNo: {} };
 
-    const tx = await program.methods
-      .buyAnchor(sideArg as never, amountBN)
+    const ixSwap = await program.methods
+      .swap(amountBN, minAmountOutBN, directionArg as never)
       .accounts({
-        buyer: wallet.publicKey,
+        user: wallet.publicKey,
         market,
-        position,
-        buyerTokenAccount: buyerTA,
-        vault,
-        paymentMint,
+        amm,
+        ammAuthority,
+        outcomeAuthority,
+        yesMint,
+        noMint,
+        paymentVault,
+        yesVault,
+        noVault,
+        userPaymentAccount: buyerTA,
+        userYesAccount,
+        userNoAccount,
         tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
       })
-      .rpc();
+      .instruction();
 
-    return { tx };
+    const tx = new Transaction();
+    tx.add(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, userYesAccount, wallet.publicKey, yesMint));
+    tx.add(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, userNoAccount, wallet.publicKey, noMint));
+    tx.add(ixSwap);
+
+    const signature = await wallet.sendTransaction(tx, connection);
+    return { tx: signature };
+  }
+
+  async function sellShares(
+    marketPubkey: string,
+    side: "Yes" | "No",
+    amountToSwap: number,
+    amountToRedeem: number,
+    sellerTokenAccount: string
+  ) {
+    if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
+
+    const market = new PublicKey(marketPubkey);
+    const sellerTA = new PublicKey(sellerTokenAccount);
+
+    const [amm] = PublicKey.findProgramAddressSync([Buffer.from("amm"), market.toBuffer()], PROGRAM_ID);
+    const [ammAuthority] = PublicKey.findProgramAddressSync([Buffer.from("amm-authority"), market.toBuffer()], PROGRAM_ID);
+    const [outcomeAuthority] = PublicKey.findProgramAddressSync([Buffer.from("outcome-authority"), market.toBuffer()], PROGRAM_ID);
+    const [yesMint] = PublicKey.findProgramAddressSync([Buffer.from("yes-mint"), market.toBuffer()], PROGRAM_ID);
+    const [noMint] = PublicKey.findProgramAddressSync([Buffer.from("no-mint"), market.toBuffer()], PROGRAM_ID);
+    const [paymentVault] = PublicKey.findProgramAddressSync([Buffer.from("payment-vault"), market.toBuffer()], PROGRAM_ID);
+    const [yesVault] = PublicKey.findProgramAddressSync([Buffer.from("yes-vault"), market.toBuffer()], PROGRAM_ID);
+    const [noVault] = PublicKey.findProgramAddressSync([Buffer.from("no-vault"), market.toBuffer()], PROGRAM_ID);
+
+    const [userYesAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), yesMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    const [userNoAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), noMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    const swapAmountBN = new BN(amountToSwap);
+    const redeemAmountBN = new BN(amountToRedeem);
+    const minAmountOutBN = new BN(0);
+    const directionArg = side === "Yes" ? { yesToNo: {} } : { noToYes: {} };
+
+    const ixSwap = await program.methods
+      .swap(swapAmountBN, minAmountOutBN, directionArg as never)
+      .accounts({
+        user: wallet.publicKey,
+        market,
+        amm,
+        ammAuthority,
+        outcomeAuthority,
+        yesMint,
+        noMint,
+        paymentVault,
+        yesVault,
+        noVault,
+        userPaymentAccount: sellerTA,
+        userYesAccount,
+        userNoAccount,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const ixRedeem = await program.methods
+      .redeemCompleteSet(redeemAmountBN)
+      .accounts({
+        user: wallet.publicKey,
+        market,
+        ammAuthority,
+        paymentVault,
+        yesMint,
+        noMint,
+        userYesAccount,
+        userNoAccount,
+        userPaymentAccount: sellerTA,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const tx = new Transaction().add(ixSwap).add(ixRedeem);
+    const signature = await wallet.sendTransaction(tx, connection);
+    return { tx: signature };
   }
 
   async function resolveMarket(marketPubkey: string, outcome: "Yes" | "No" | "Cancelled") {
@@ -149,7 +351,7 @@ export function useMarketActions() {
     else outcomeArg = { cancelled: {} };
 
     const tx = await program.methods
-      .resolveMarketAnchor(outcomeArg as never)
+      .resolveMarket(outcomeArg as never)
       .accounts({
         market,
         authority: wallet.publicKey,
@@ -162,7 +364,7 @@ export function useMarketActions() {
     if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
     const market = new PublicKey(marketPubkey);
     const tx = await program.methods
-      .cancelMarketAnchor()
+      .cancelMarket()
       .accounts({
         market,
         authority: wallet.publicKey,
@@ -173,106 +375,45 @@ export function useMarketActions() {
 
   async function claimWinnings(
     marketPubkey: string,
-    paymentMintAddress: string,
-    claimerTokenAccount: string,
-    treasuryTokenAccount: string
+    claimerTokenAccount: string
   ) {
     if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
     const market = new PublicKey(marketPubkey);
-    const paymentMint = new PublicKey(paymentMintAddress);
-    
-    const [position] = PublicKey.findProgramAddressSync(
-      [Buffer.from("position"), wallet.publicKey.toBuffer(), market.toBuffer()],
-      PROGRAM_ID
+    const claimerTA = new PublicKey(claimerTokenAccount);
+
+    const [ammAuthority] = PublicKey.findProgramAddressSync([Buffer.from("amm-authority"), market.toBuffer()], PROGRAM_ID);
+    const [yesMint] = PublicKey.findProgramAddressSync([Buffer.from("yes-mint"), market.toBuffer()], PROGRAM_ID);
+    const [noMint] = PublicKey.findProgramAddressSync([Buffer.from("no-mint"), market.toBuffer()], PROGRAM_ID);
+    const [paymentVault] = PublicKey.findProgramAddressSync([Buffer.from("payment-vault"), market.toBuffer()], PROGRAM_ID);
+
+    const [userYesAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), yesMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
     );
-    const [vaultAuthority] = PublicKey.findProgramAddressSync(
-      [Buffer.from("vault-authority"), market.toBuffer()],
-      PROGRAM_ID
-    );
-    const [vault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("vault"), market.toBuffer()],
-      PROGRAM_ID
+    const [userNoAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), noMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
     );
 
     const tx = await program.methods
-      .claimAnchor()
+      .claimAmmWinnings()
       .accounts({
-        claimer: wallet.publicKey,
+        user: wallet.publicKey,
         market,
-        position,
-        vaultAuthority,
-        vault,
-        paymentMint,
-        claimerTokenAccount: new PublicKey(claimerTokenAccount),
-        tresuryTokenAccount: new PublicKey(treasuryTokenAccount),
+        ammAuthority,
+        paymentVault,
+        yesMint,
+        noMint,
+        userYesAccount,
+        userNoAccount,
+        userPaymentAccount: claimerTA,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
       .rpc();
     return { tx };
   }
 
-  async function refundPosition(
-    marketPubkey: string,
-    paymentMintAddress: string,
-    refunderTokenAccount: string
-  ) {
-    if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
-    const market = new PublicKey(marketPubkey);
-    const paymentMint = new PublicKey(paymentMintAddress);
-
-    const [position] = PublicKey.findProgramAddressSync(
-      [Buffer.from("position"), wallet.publicKey.toBuffer(), market.toBuffer()],
-      PROGRAM_ID
-    );
-    const [vaultAuthority] = PublicKey.findProgramAddressSync(
-      [Buffer.from("vault-authority"), market.toBuffer()],
-      PROGRAM_ID
-    );
-    const [vault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("vault"), market.toBuffer()],
-      PROGRAM_ID
-    );
-
-    const tx = await program.methods
-      .refundAnchor()
-      .accounts({
-        refunder: wallet.publicKey,
-        market,
-        position,
-        vaultAuthority,
-        vault,
-        paymentMint,
-        refunderTokenAccount: new PublicKey(refunderTokenAccount),
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .rpc();
-    return { tx };
-  }
-
-  const fetchUserPosition = useCallback(async (marketPubkey: string) => {
-    if (!program || !wallet.publicKey) return null;
-    const market = new PublicKey(marketPubkey);
-    const [position] = PublicKey.findProgramAddressSync(
-      [Buffer.from("position"), wallet.publicKey.toBuffer(), market.toBuffer()],
-      PROGRAM_ID
-    );
-    try {
-      const acc = await program.account.position.fetch(position);
-      return {
-        publicKey: position.toString(),
-        owner: acc.owner.toString(),
-        market: acc.market.toString(),
-        yesShares: acc.yesShares.toString(),
-        noShares: acc.noShares.toString(),
-        claimed: acc.claimed,
-        refunded: acc.refunded,
-      };
-    } catch (e) {
-      return null;
-    }
-  }, [program, wallet.publicKey]);
-
-  return { createMarket, buyShares, resolveMarket, cancelMarket, claimWinnings, refundPosition, fetchUserPosition };
+  return { createMarket, addLiquidity, removeLiquidity, buyShares, sellShares, resolveMarket, cancelMarket, claimWinnings };
 }
 
 export async function fetchMarket(
@@ -296,15 +437,34 @@ export async function fetchMarket(
       outcome: a.outcome.unresolved
         ? "Unresolved"
         : a.outcome.yes
-        ? "Yes"
-        : a.outcome.no
-        ? "No"
-        : "Cancelled",
+          ? "Yes"
+          : a.outcome.no
+            ? "No"
+            : "Cancelled",
       paymentMint: a.paymentMint.toString(),
     };
   } catch (e) {
-    console.error("fetchAllMarkets error:", e);
-    return [];
+    console.error("fetchMarket error:", e);
+    return null;
+  }
+}
+
+export async function fetchAmm(program: Program<Idl>, marketPubkey: string): Promise<AmmAccount | null> {
+  try {
+    const market = new PublicKey(marketPubkey);
+    const [amm] = PublicKey.findProgramAddressSync([Buffer.from("amm"), market.toBuffer()], PROGRAM_ID);
+    const account = await program.account.ammPool.fetch(amm) as any;
+    return {
+      publicKey: amm.toString(),
+      market: account.market.toString(),
+      yesReserve: account.yesReserve.toString(),
+      noReserve: account.noReserve.toString(),
+      lpSupply: account.lpSupply.toString(),
+      feeBps: account.feeBps,
+    };
+  } catch (err) {
+    console.error("Failed to fetch AMM:", err);
+    return null;
   }
 }
 
@@ -312,13 +472,9 @@ export async function fetchAllMarkets(
   program: Program
 ): Promise<MarketAccount[]> {
   try {
-    // Instead of using program.account.market.all() which crashes if ANY old account fails to decode,
-    // we manually fetch all program accounts and attempt to decode them one by one.
     const connection = program.provider.connection;
     const programId = program.programId;
-    
-    // We filter by the exact 8-byte discriminator for the Market account to avoid fetching positions
-    // Discriminator for Market is hash("account:Market")[..8]
+
     const marketDiscriminator = Buffer.from([219, 190, 213, 55, 0, 227, 198, 154]);
 
     const rawAccounts = await connection.getProgramAccounts(programId, {
@@ -353,14 +509,13 @@ export async function fetchAllMarkets(
           outcome: decoded.outcome.unresolved
             ? "Unresolved"
             : decoded.outcome.yes
-            ? "Yes"
-            : decoded.outcome.no
-            ? "No"
-            : "Cancelled",
+              ? "Yes"
+              : decoded.outcome.no
+                ? "No"
+                : "Cancelled",
           paymentMint: decoded.paymentMint.toString(),
         });
       } catch (decodeErr) {
-        // Skip accounts that fail to decode (e.g. old schema versions before total_amount was added)
         console.warn("Skipped un-decodable market:", raw.pubkey.toString());
       }
     }
