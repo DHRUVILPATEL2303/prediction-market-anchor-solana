@@ -25,7 +25,7 @@ function calculateExactSwapAmount(
 ): number {
   if (totalSellAmount === 0 || reserveIn === 0 || reserveOut === 0) return 0;
   const fRem = (10000 - feeBps) / 10000;
-  
+
   const a = fRem;
   const b = reserveIn + reserveOut * fRem - totalSellAmount * fRem;
   const c = -reserveIn * totalSellAmount;
@@ -45,7 +45,7 @@ export function MarketDetails({ marketId }: { marketId: string }) {
 
   const [market, setMarket] = useState<MarketAccount | null>(null);
   const [amm, setAmm] = useState<AmmAccount | null>(null);
-  
+
   // Native SPL Token Balances
   const [usdcBalance, setUsdcBalance] = useState<string>("0");
   const [yesBalance, setYesBalance] = useState<string>("0");
@@ -54,14 +54,14 @@ export function MarketDetails({ marketId }: { marketId: string }) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
-  
+
   // Trade Form State
   const [tradeMode, setTradeMode] = useState<"Buy" | "Sell">("Buy");
   const [side, setSide] = useState<"Yes" | "No">("Yes");
   const [amount, setAmount] = useState("");
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeError, setTradeError] = useState("");
-  
+
   // Admin State
   const [liquidityAmount, setLiquidityAmount] = useState("");
 
@@ -89,13 +89,13 @@ export function MarketDetails({ marketId }: { marketId: string }) {
           const usdcInfo = await connection.getTokenAccountBalance(usdcAta);
           setUsdcBalance(usdcInfo.value.uiAmountString || "0");
         } catch { setUsdcBalance("0"); }
-        
+
         try {
           const yesAta = await getAssociatedTokenAddress(yesMint, publicKey);
           const yesInfo = await connection.getTokenAccountBalance(yesAta);
           setYesBalance(yesInfo.value.uiAmountString || "0");
         } catch { setYesBalance("0"); }
-        
+
         try {
           const noAta = await getAssociatedTokenAddress(noMint, publicKey);
           const noInfo = await connection.getTokenAccountBalance(noAta);
@@ -156,7 +156,7 @@ export function MarketDetails({ marketId }: { marketId: string }) {
   const handleAddLiquidity = async () => {
     if (!market || !publicKey) return;
     const amountNum = parseFloat(liquidityAmount);
-    if (!amountNum || amountNum < 10) return setError("Minimum liquidity amount is 10 USDC");
+    if (!amountNum || amountNum < 1) return setError("Minimum liquidity amount is 10 USDC");
     setActionLoading(true);
     try {
       const mintPubkey = new PublicKey(market.paymentMint);
@@ -204,7 +204,7 @@ export function MarketDetails({ marketId }: { marketId: string }) {
     try {
       const mintPubkey = new PublicKey(market.paymentMint);
       const ata = await getAssociatedTokenAddress(mintPubkey, publicKey);
-      
+
       const ataInfo = await connection.getAccountInfo(ata);
       if (!ataInfo && tradeMode === "Buy") {
         setTradeError("You don't have a token account for this mint. Please create one first or get USDC.");
@@ -224,16 +224,16 @@ export function MarketDetails({ marketId }: { marketId: string }) {
         );
       } else {
         // Exact Math to eliminate dust!
-        // If selling YES, we swap YES for NO. 
+        // If selling YES, we swap YES for NO.
         // reserveIn = yesReserve, reserveOut = noReserve.
         if (!amm) throw new Error("AMM data not loaded");
-        
+
         const resIn = side === "Yes" ? Number(amm.yesReserve) : Number(amm.noReserve);
         const resOut = side === "Yes" ? Number(amm.noReserve) : Number(amm.yesReserve);
-        
+
         const swapAmount = calculateExactSwapAmount(rawAmount, resIn, resOut, amm.feeBps);
         const redeemAmount = rawAmount - swapAmount;
-        
+
         if (swapAmount <= 0 || redeemAmount <= 0) {
           throw new Error("Amount too small to sell or pool lacks liquidity");
         }
@@ -246,7 +246,7 @@ export function MarketDetails({ marketId }: { marketId: string }) {
           ata.toString()
         );
       }
-      
+
       setAmount("");
       await loadData(); // refresh position
     } catch (err: unknown) {
@@ -267,16 +267,16 @@ export function MarketDetails({ marketId }: { marketId: string }) {
 
   const isExpired = Date.now() / 1000 > market.endTime;
   const isAuthority = publicKey?.toString() === market.authority;
-  
+
   // Price Calculation from AMM Reserves
   const yesRes = amm ? BigInt(amm.yesReserve) : 0n;
   const noRes = amm ? BigInt(amm.noReserve) : 0n;
   const totalRes = yesRes + noRes;
-  
+
   // Price of YES is noReserve / totalRes
   const yesPercent = totalRes === 0n ? 50 : Number((noRes * 100n) / totalRes);
   const noPercent = 100 - yesPercent;
-  
+
   const yesPrice = (yesPercent / 100).toFixed(2);
   const noPrice = (noPercent / 100).toFixed(2);
 
@@ -294,7 +294,7 @@ export function MarketDetails({ marketId }: { marketId: string }) {
            <span className="market-id">ID: #{market.marketId}</span>
         </div>
         <h1 className="market-details-title">{market.question}</h1>
-        
+
         <div className="market-stats" style={{ marginTop: '2rem' }}>
           <div className="stat">
             <span className="stat-label">YES Pool</span>
@@ -328,24 +328,24 @@ export function MarketDetails({ marketId }: { marketId: string }) {
               <h2>Trade</h2>
               {connected && <span style={{ fontSize: '0.9rem', color: '#94a3b8' }}>Wallet: {usdcBalance} USDC</span>}
             </div>
-            
+
             <div style={{ display: 'flex', borderBottom: '1px solid rgba(148, 163, 184, 0.1)' }}>
-              <button 
-                className={`tab-btn ${tradeMode === "Buy" ? "active" : ""}`} 
+              <button
+                className={`tab-btn ${tradeMode === "Buy" ? "active" : ""}`}
                 onClick={() => setTradeMode("Buy")}
                 style={{ flex: 1, padding: '1rem', background: 'transparent', border: 'none', borderBottom: tradeMode === "Buy" ? '2px solid #3b82f6' : '2px solid transparent', color: tradeMode === "Buy" ? 'white' : '#94a3b8', cursor: 'pointer', fontWeight: 600 }}
               >
                 Buy
               </button>
-              <button 
-                className={`tab-btn ${tradeMode === "Sell" ? "active" : ""}`} 
+              <button
+                className={`tab-btn ${tradeMode === "Sell" ? "active" : ""}`}
                 onClick={() => setTradeMode("Sell")}
                 style={{ flex: 1, padding: '1rem', background: 'transparent', border: 'none', borderBottom: tradeMode === "Sell" ? '2px solid #3b82f6' : '2px solid transparent', color: tradeMode === "Sell" ? 'white' : '#94a3b8', cursor: 'pointer', fontWeight: 600 }}
               >
                 Sell
               </button>
             </div>
-            
+
             <form onSubmit={handleTrade} style={{ padding: '1.5rem' }}>
               <div className="side-selector" style={{ marginBottom: '1.5rem' }}>
                 <button
@@ -426,7 +426,7 @@ export function MarketDetails({ marketId }: { marketId: string }) {
                 <span className="stat-value no-color">{noBalance}</span>
               </div>
             </div>
-            
+
             {/* Settlement actions */}
             {(market.outcome === "Yes" || market.outcome === "No" || market.outcome === "Cancelled") && (
               <div className="settlement-action">
@@ -448,11 +448,11 @@ export function MarketDetails({ marketId }: { marketId: string }) {
               <button className="btn-primary no-color" onClick={() => handleResolve("No")} disabled={actionLoading}>Resolve NO</button>
               <button className="btn-secondary" onClick={handleCancel} disabled={actionLoading}>Cancel Market</button>
             </div>
-            
+
             <div style={{ marginTop: '1.5rem', borderTop: '1px solid rgba(148, 163, 184, 0.1)', paddingTop: '1.5rem' }}>
               <h3>Manage AMM Liquidity</h3>
               <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1rem' }}>Supply USDC so users can start trading!</p>
-              
+
               <div style={{ display: 'flex', gap: '10px' }}>
                 <input
                   type="number"
