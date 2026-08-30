@@ -6,7 +6,7 @@ import { TOKEN_PROGRAM_ID, createAssociatedTokenAccountIdempotentInstruction } f
 import { useMemo, useCallback } from "react";
 import { Program, AnchorProvider, BN, Idl, Wallet, utils } from "@coral-xyz/anchor";
 import idl from "../idl.json";
-import { MarketAccount } from "../types";
+import { MarketAccount, AmmAccount } from "../types";
 
 export const PROGRAM_ID = new PublicKey(
   "7PBhPD5n3Qe18BoFR4uiRNVTCoqz3RYh9mypf6CC3tww"
@@ -422,7 +422,7 @@ export async function fetchMarket(
 ): Promise<MarketAccount | null> {
   try {
     const pk = new PublicKey(marketPubkey);
-    const a = await program.account.market.fetch(pk);
+    const a = await (program.account as any).market.fetch(pk);
     return {
       publicKey: pk.toString(),
       marketId: a.marketId.toString(),
@@ -453,7 +453,7 @@ export async function fetchAmm(program: Program<Idl>, marketPubkey: string): Pro
   try {
     const market = new PublicKey(marketPubkey);
     const [amm] = PublicKey.findProgramAddressSync([Buffer.from("amm"), market.toBuffer()], PROGRAM_ID);
-    const account = await program.account.ammPool.fetch(amm) as any;
+    const account = await (program.account as any).ammPool.fetch(amm) as any;
     return {
       publicKey: amm.toString(),
       market: account.market.toString(),
@@ -492,7 +492,7 @@ export async function fetchAllMarkets(
 
     let amms: any[] = [];
     try {
-      amms = await program.account.ammPool.all();
+      amms = await (program.account as any).ammPool.all();
     } catch (e) {
       console.warn("Failed to fetch AMMs in fetchAllMarkets", e);
     }
