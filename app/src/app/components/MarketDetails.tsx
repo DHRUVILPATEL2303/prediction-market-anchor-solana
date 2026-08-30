@@ -8,7 +8,18 @@ import Link from "next/link";
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 
-function formatShares(raw: string) {
+/* ── Helpers ──────────────────────────────────────────────────── */
+function fmtUSDC(raw: string): string {
+  const n = BigInt(raw);
+  if (n === 0n) return "$0.00";
+  const whole = n / 1_000_000n;
+  const frac  = n % 1_000_000n;
+  if (whole >= 1_000_000n) return `$${(Number(whole) / 1_000_000).toFixed(2)}M`;
+  if (whole >= 1_000n)     return `$${(Number(whole) / 1_000).toFixed(1)}K`;
+  return `$${whole}.${frac.toString().padStart(6, "0").slice(0, 2)}`;
+}
+
+function fmtShares(raw: string): string {
   const n = BigInt(raw);
   if (n === 0n) return "0.00";
   const whole = n / 1_000_000n;
@@ -16,7 +27,6 @@ function formatShares(raw: string) {
   return `${whole}.${frac.toString().padStart(6, "0").slice(0, 2)}`;
 }
 
-// Calculate exact swap amount so output equals amount to redeem
 function calculateExactSwapAmount(
   totalSellAmount: number,
   reserveIn: number,
@@ -30,44 +40,46 @@ function calculateExactSwapAmount(
   const c = -reserveIn * totalSellAmount;
   const discriminant = b * b - 4 * a * c;
   if (discriminant < 0) return 0;
-  const x1 = (-b + Math.sqrt(discriminant)) / (2 * a);
-  return Math.floor(x1);
+  return Math.floor((-b + Math.sqrt(discriminant)) / (2 * a));
 }
 
-function outcomeLabel(outcome: string) {
-  if (outcome === "Yes")       return { label: "Resolved YES", cls: "badge-yes" };
-  if (outcome === "No")        return { label: "Resolved NO",  cls: "badge-no"  };
-  if (outcome === "Cancelled") return { label: "Cancelled",    cls: "badge-cancelled" };
-  return { label: "Active", cls: "badge-active" };
+function detectCategory(q: string): string {
+  const s = q.toLowerCase();
+  if (/\b(btc|eth|sol|crypto|bitcoin|ethereum|defi|nft|token|blockchain|web3|usdc)\b/.test(s)) return "Crypto";
+  if (/\b(election|vote|president|congress|senate|politi|govern|democrat|republican)\b/.test(s)) return "Politics";
+  if (/\b(world cup|nba|nfl|league|championship|sport|game|match|team|player|score|goal)\b/.test(s)) return "Sports";
+  if (/\b(ai|gpt|openai|tech|software|apple|google|microsoft|model|llm)\b/.test(s)) return "Technology";
+  if (/\b(fed|interest|inflation|stock|economy|gdp|rate|bond|nasdaq)\b/.test(s)) return "Finance";
+  return "General";
 }
 
+/* ── Component ────────────────────────────────────────────────── */
 export function MarketDetails({ marketId }: { marketId: string }) {
   const { program } = useProgram();
   const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
-  const { resolveMarket, cancelMarket, claimWinnings, buyShares, sellShares, addLiquidity, removeLiquidity } =
-    useMarketActions();
+  const {
+    resolveMarket, cancelMarket, claimWinnings,
+    buyShares, sellShares, addLiquidity, removeLiquidity,
+  } = useMarketActions();
 
   const [market, setMarket] = useState<MarketAccount | null>(null);
-  const [amm, setAmm]       = useState<AmmAccount | null>(null);
+  const [amm,    setAmm]    = useState<AmmAccount | null>(null);
 
-  // Balances
-  const [usdcBalance, setUsdcBalance] = useState<string>("0");
-  const [yesBalance,  setYesBalance]  = useState<string>("0");
-  const [noBalance,   setNoBalance]   = useState<string>("0");
+  const [usdcBalance, setUsdcBalance] = useState("0");
+  const [yesBalance,  setYesBalance]  = useState("0");
+  const [noBalance,   setNoBalance]   = useState("0");
 
   const [loading,       setLoading]       = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error,         setError]         = useState("");
 
-  // Trade form
   const [tradeMode,    setTradeMode]    = useState<"Buy" | "Sell">("Buy");
   const [side,         setSide]         = useState<"Yes" | "No">("Yes");
   const [amount,       setAmount]       = useState("");
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeError,   setTradeError]   = useState("");
 
-  // Admin
   const [liquidityAmount, setLiquidityAmount] = useState("");
 
   const loadData = useCallback(async () => {
@@ -80,64 +92,50 @@ export function MarketDetails({ marketId }: { marketId: string }) {
         const a = await fetchAmm(program, marketId);
         setAmm(a);
       }
-
       if (m && connected && publicKey) {
         const paymentMint  = new PublicKey(m.paymentMint);
         const marketPubkey = new PublicKey(marketId);
-
         const [yesMint] = PublicKey.findProgramAddressSync(
-          [Buffer.from("yes-mint"), marketPubkey.toBuffer()],
-          PROGRAM_ID
+          [Buffer.from("yes-mint"), marketPubkey.toBuffer()], PROGRAM_ID
         );
         const [noMint] = PublicKey.findProgramAddressSync(
-          [Buffer.from("no-mint"), marketPubkey.toBuffer()],
-          PROGRAM_ID
+          [Buffer.from("no-mint"), marketPubkey.toBuffer()], PROGRAM_ID
         );
-
         try {
-          const usdcAta  = await getAssociatedTokenAddress(paymentMint, publicKey);
-          const usdcInfo = await connection.getTokenAccountBalance(usdcAta);
-          setUsdcBalance(usdcInfo.value.uiAmountString || "0");
+          const ata  = await getAssociatedTokenAddress(paymentMint, publicKey);
+          const info = await connection.getTokenAccountBalance(ata);
+          setUsdcBalance(info.value.uiAmountString || "0");
         } catch { setUsdcBalance("0"); }
-
         try {
-          const yesAta  = await getAssociatedTokenAddress(yesMint, publicKey);
-          const yesInfo = await connection.getTokenAccountBalance(yesAta);
-          setYesBalance(yesInfo.value.uiAmountString || "0");
+          const ata  = await getAssociatedTokenAddress(yesMint, publicKey);
+          const info = await connection.getTokenAccountBalance(ata);
+          setYesBalance(info.value.uiAmountString || "0");
         } catch { setYesBalance("0"); }
-
         try {
-          const noAta  = await getAssociatedTokenAddress(noMint, publicKey);
-          const noInfo = await connection.getTokenAccountBalance(noAta);
-          setNoBalance(noInfo.value.uiAmountString || "0");
+          const ata  = await getAssociatedTokenAddress(noMint, publicKey);
+          const info = await connection.getTokenAccountBalance(ata);
+          setNoBalance(info.value.uiAmountString || "0");
         } catch { setNoBalance("0"); }
       }
-    } catch {
-      setError("Failed to load market");
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    } catch { setError("Failed to load market"); }
+    finally { setLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId, connected, publicKey]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  /* ── Action handlers ─────────────────────────────────────────── */
+  /* ── Handlers ─────────────────────────────────────────── */
   const handleResolve = async (outcome: "Yes" | "No" | "Cancelled") => {
     setActionLoading(true);
-    try {
-      await resolveMarket(marketId, outcome);
-      await loadData();
-    } catch (err: any) { setError(err.message || String(err)); }
+    try { await resolveMarket(marketId, outcome); await loadData(); }
+    catch (e: any) { setError(e.message || String(e)); }
     finally { setActionLoading(false); }
   };
 
   const handleCancel = async () => {
     setActionLoading(true);
-    try {
-      await cancelMarket(marketId);
-      await loadData();
-    } catch (err: any) { setError(err.message || String(err)); }
+    try { await cancelMarket(marketId); await loadData(); }
+    catch (e: any) { setError(e.message || String(e)); }
     finally { setActionLoading(false); }
   };
 
@@ -149,47 +147,43 @@ export function MarketDetails({ marketId }: { marketId: string }) {
       const ata = await getAssociatedTokenAddress(mintPubkey, publicKey);
       await claimWinnings(marketId, ata.toString());
       await loadData();
-    } catch (err: any) { setError(err.message || String(err)); }
+    } catch (e: any) { setError(e.message || String(e)); }
     finally { setActionLoading(false); }
   };
 
   const handleAddLiquidity = async () => {
     if (!market || !publicKey) return;
-    const amountNum = parseFloat(liquidityAmount);
-    if (!amountNum || amountNum < 1) return setError("Minimum liquidity amount is 1 USDC");
+    const n = parseFloat(liquidityAmount);
+    if (!n || n < 1) return setError("Minimum 1 USDC");
     setActionLoading(true);
     try {
       const mintPubkey = new PublicKey(market.paymentMint);
       const ata = await getAssociatedTokenAddress(mintPubkey, publicKey);
-      const rawAmount = Math.floor(amountNum * 1_000_000);
-      await addLiquidity(marketId, rawAmount, market.paymentMint, ata.toString());
-      setLiquidityAmount("");
-      await loadData();
-    } catch (err: any) { setError(err.message || String(err)); }
+      await addLiquidity(marketId, Math.floor(n * 1_000_000), market.paymentMint, ata.toString());
+      setLiquidityAmount(""); await loadData();
+    } catch (e: any) { setError(e.message || String(e)); }
     finally { setActionLoading(false); }
   };
 
   const handleRemoveLiquidity = async () => {
     if (!market || !publicKey) return;
-    const amountNum = parseFloat(liquidityAmount);
-    if (!amountNum || amountNum <= 0) return setError("Invalid liquidity amount");
+    const n = parseFloat(liquidityAmount);
+    if (!n || n <= 0) return setError("Invalid amount");
     setActionLoading(true);
     try {
       const mintPubkey = new PublicKey(market.paymentMint);
       const ata = await getAssociatedTokenAddress(mintPubkey, publicKey);
-      const rawAmount = Math.floor(amountNum * 1_000_000);
-      await removeLiquidity(marketId, rawAmount, ata.toString());
-      setLiquidityAmount("");
-      await loadData();
-    } catch (err: any) { setError(err.message || String(err)); }
+      await removeLiquidity(marketId, Math.floor(n * 1_000_000), ata.toString());
+      setLiquidityAmount(""); await loadData();
+    } catch (e: any) { setError(e.message || String(e)); }
     finally { setActionLoading(false); }
   };
 
   async function handleTrade(e: React.FormEvent) {
     e.preventDefault();
-    if (!connected || !publicKey) { setTradeError("Connect your wallet first"); return; }
+    if (!connected || !publicKey) return setTradeError("Connect your wallet first");
     const amountNum = parseFloat(amount);
-    if (!amountNum || amountNum <= 0) { setTradeError("Enter a valid amount"); return; }
+    if (!amountNum || amountNum <= 0) return setTradeError("Enter a valid amount");
     if (!market) return;
 
     setTradeLoading(true);
@@ -200,8 +194,7 @@ export function MarketDetails({ marketId }: { marketId: string }) {
 
       const ataInfo = await connection.getAccountInfo(ata);
       if (!ataInfo && tradeMode === "Buy") {
-        setTradeError("You don't have a token account for this mint. Please get USDC first.");
-        setTradeLoading(false);
+        setTradeError("No USDC token account found. Get USDC on devnet first.");
         return;
       }
 
@@ -211,17 +204,11 @@ export function MarketDetails({ marketId }: { marketId: string }) {
         await buyShares(market.publicKey, side, rawAmount, market.paymentMint, ata.toString());
       } else {
         if (!amm) throw new Error("AMM data not loaded");
-
         const resIn  = side === "Yes" ? Number(amm.yesReserve) : Number(amm.noReserve);
         const resOut = side === "Yes" ? Number(amm.noReserve)  : Number(amm.yesReserve);
-
         const swapAmount   = calculateExactSwapAmount(rawAmount, resIn, resOut, amm.feeBps);
         const redeemAmount = rawAmount - swapAmount;
-
-        if (swapAmount <= 0 || redeemAmount <= 0) {
-          throw new Error("Amount too small to sell or pool lacks liquidity");
-        }
-
+        if (swapAmount <= 0 || redeemAmount <= 0) throw new Error("Amount too small or insufficient liquidity");
         await sellShares(market.publicKey, side, swapAmount, redeemAmount, ata.toString());
       }
 
@@ -234,285 +221,343 @@ export function MarketDetails({ marketId }: { marketId: string }) {
     }
   }
 
-  /* ── Loading / error states ──────────────────────────────────── */
+  /* ── Loading / error states ────────────────────────── */
   if (loading) {
     return (
-      <div className="market-details-loading">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: "spin 1s linear infinite" }}>
-          <path d="M21 12a9 9 0 1 1-6.219-8.56" strokeLinecap="round" />
-        </svg>
-        Loading market…
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div className="detail-pg">
+        <div className="skel-item" style={{ height: 20, width: 100, border: "none", marginBottom: 24 }} />
+        
+        <div className="detail-hd">
+          <div className="detail-hd-top">
+            <div className="skel-item" style={{ height: 40, width: "70%", border: "none", margin: 0 }} />
+          </div>
+          <div className="detail-meta-row" style={{ marginTop: 20, gap: 24 }}>
+            <div className="skel-item" style={{ height: 24, width: 100, border: "none", margin: 0 }} />
+            <div className="skel-item" style={{ height: 24, width: 140, border: "none", margin: 0 }} />
+            <div className="skel-item" style={{ height: 24, width: 80, border: "none", margin: 0 }} />
+          </div>
+        </div>
+
+        <div className="detail-body">
+          <div className="detail-left" style={{ gap: 24 }}>
+            <div className="skel-item" style={{ height: 240, margin: 0 }} />
+            <div className="skel-item" style={{ height: 180, margin: 0 }} />
+          </div>
+          <div className="tp" style={{ padding: 0, overflow: "hidden", background: "transparent", border: "none" }}>
+            <div className="skel-item" style={{ height: 480, margin: 0 }} />
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!market) {
     return (
-      <div className="market-details-page">
-        <div className="error-banner">Market not found or could not be loaded.</div>
+      <div className="detail-pg">
+        <div className="err-bar">Market not found.</div>
       </div>
     );
   }
 
-  /* ── Derived values ──────────────────────────────────────────── */
-  const isExpired    = Date.now() / 1000 > market.endTime;
-  const isAuthority  = publicKey?.toString() === market.authority;
-  const isActive     = market.outcome === "Unresolved" && !isExpired;
+  /* ── Derived values ─────────────────────────────────── */
+  const isExpired   = Date.now() / 1000 > market.endTime;
+  const isAuthority = publicKey?.toString() === market.authority;
+  const isActive    = market.outcome === "Unresolved" && !isExpired;
+  const isSettled   = market.outcome === "Yes" || market.outcome === "No" || market.outcome === "Cancelled";
 
-  const yesRes   = amm ? BigInt(amm.yesReserve) : 0n;
-  const noRes    = amm ? BigInt(amm.noReserve)  : 0n;
+  const yesRes  = amm ? BigInt(amm.yesReserve) : 0n;
+  const noRes   = amm ? BigInt(amm.noReserve)  : 0n;
   const totalRes = yesRes + noRes;
 
-  // Price of YES = noReserve / totalRes (CPMM convention)
-  const yesPercent = totalRes === 0n ? 50 : Number((noRes  * 100n) / totalRes);
-  const noPercent  = 100 - yesPercent;
-  const yesPrice   = (yesPercent / 100).toFixed(2);
-  const noPrice    = (noPercent  / 100).toFixed(2);
+  // Price of YES = noReserve / totalRes (CPMM)
+  const yesPct  = totalRes === 0n ? 50 : Number((noRes * 100n) / totalRes);
+  const noPct   = 100 - yesPct;
+  const yesPrice = (yesPct / 100).toFixed(2);
+  const noPrice  = (noPct  / 100).toFixed(2);
 
-  const { label, cls } = outcomeLabel(market.outcome);
+  const daysLeft = Math.max(0, Math.floor((market.endTime * 1000 - Date.now()) / 86_400_000));
+  const endDateStr = new Date(market.endTime * 1000).toLocaleDateString("en", {
+    year: "numeric", month: "short", day: "numeric",
+  });
+  const category = detectCategory(market.question);
 
-  const endDate   = new Date(market.endTime * 1000);
-  const timeLeft  = market.endTime * 1000 - Date.now();
-  const daysLeft  = Math.max(0, Math.floor(timeLeft / 86400000));
+  let statusCls = "s-active"; let statusLabel = "Active";
+  if (market.outcome === "Yes")        { statusCls = "s-yes"; statusLabel = "Resolved YES"; }
+  else if (market.outcome === "No")    { statusCls = "s-no";  statusLabel = "Resolved NO";  }
+  else if (market.outcome === "Cancelled") { statusCls = "s-cancelled"; statusLabel = "Cancelled"; }
 
-  /* ── Render ──────────────────────────────────────────────────── */
+  // Estimated shares / payout for buy
+  const amountNum   = parseFloat(amount) || 0;
+  const rawAmt      = Math.floor(amountNum * 1_000_000);
+  const price       = side === "Yes" ? yesPct / 100 : noPct / 100;
+  const estShares   = price > 0 ? (amountNum / price).toFixed(2) : "0.00";
+  const estPayout   = estShares;
+  const priceImpact = amountNum > 0 && totalRes > 0n
+    ? ((amountNum * 1_000_000 / Number(totalRes)) * 100).toFixed(2)
+    : "0.00";
+
+  const submitDisabled = tradeLoading || !connected || !amount || parseFloat(amount) <= 0;
+
+  /* ── Render ─────────────────────────────────────────── */
   return (
-    <div className="market-details-page">
+    <div className="detail-pg">
       {/* Back */}
-      <Link href="/" className="back-btn">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <Link href="/" className="detail-back">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        Back to Markets
+        All Markets
       </Link>
 
-      {/* Header card */}
-      <div className="market-header-card">
-        <div className="market-header-top">
-          <span className={`badge ${cls}`}>
-            <span className="badge-dot" />
-            {label}
-          </span>
-          <span className="market-id">#{market.marketId}</span>
+      {/* Header */}
+      <div className="detail-hd">
+        <div className="detail-hd-top">
+          <h1 className="detail-q">{market.question}</h1>
+          <span className={`s-badge ${statusCls}`}>{statusLabel}</span>
         </div>
 
-        <h1 className="market-details-title">{market.question}</h1>
-
-        {/* Probability pills */}
-        <div className="probability-display">
-          <div className="prob-pill prob-pill-yes">
-            <div>
-              <div className="prob-label">YES</div>
-              <div className="prob-value">{yesPercent}%</div>
-            </div>
-            <div style={{ fontSize: 13, color: "var(--yes)", opacity: 0.7 }}>
-              ${yesPrice}
-            </div>
+        <div className="detail-meta-row">
+          <div className="detail-meta-item">
+            <span className="detail-meta-lbl">Category</span>
+            <span className="detail-meta-val">{category}</span>
           </div>
-          <div className="prob-pill prob-pill-no">
-            <div>
-              <div className="prob-label">NO</div>
-              <div className="prob-value">{noPercent}%</div>
-            </div>
-            <div style={{ fontSize: 13, color: "var(--no)", opacity: 0.7 }}>
-              ${noPrice}
-            </div>
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        <div className="details-progress-bar">
-          <div className="progress-yes" style={{ width: `${yesPercent}%` }} />
-          <div className="progress-no"  style={{ width: `${noPercent}%`  }} />
-        </div>
-        <div className="details-progress-labels">
-          <span className="yes-color">{yesPercent}% chance YES</span>
-          <span className="no-color">{noPercent}% chance NO</span>
-        </div>
-
-        {/* Info row */}
-        <div className="market-info-row">
-          <div className="market-info-item">
-            <span className="info-label">YES Pool</span>
-            <span className="info-value yes-color">{formatShares(market.totalYes)} USDC</span>
-          </div>
-          <div className="market-info-item">
-            <span className="info-label">NO Pool</span>
-            <span className="info-value no-color">{formatShares(market.totalNo)} USDC</span>
-          </div>
-          <div className="market-info-item">
-            <span className="info-label">Protocol Fee</span>
-            <span className="info-value">{(market.feeBps / 100).toFixed(2)}%</span>
-          </div>
-          <div className="market-info-item">
-            <span className="info-label">{isExpired ? "Ended" : "Ends"}</span>
-            <span className="info-value">
-              {isExpired ? endDate.toLocaleDateString() : `${daysLeft}d left`}
+          <div className="detail-meta-item">
+            <span className="detail-meta-lbl">{isExpired ? "Ended" : "Ends"}</span>
+            <span className="detail-meta-val">
+              {isExpired ? endDateStr : `${endDateStr} (${daysLeft}d)`}
             </span>
           </div>
-          <div className="market-info-item">
-            <span className="info-label">Creator</span>
-            <span className="info-value" style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
-              {market.authority.slice(0, 6)}…{market.authority.slice(-4)}
+          <div className="detail-meta-item">
+            <span className="detail-meta-lbl">Fee</span>
+            <span className="detail-meta-val">{(market.feeBps / 100).toFixed(2)}%</span>
+          </div>
+          <div className="detail-meta-item">
+            <span className="detail-meta-lbl">Creator</span>
+            <span className="detail-meta-val" style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+              {market.authority.slice(0, 4)}…{market.authority.slice(-4)}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Global error */}
-      {error && <div className="error-banner" style={{ marginBottom: 20 }}>{error}</div>}
+      {error && <div className="err-bar" style={{ marginBottom: 16 }}>{error}</div>}
 
-      {/* Two-column panels */}
-      <div className="market-panels">
+      {/* Body */}
+      <div className="detail-body">
         {/* Left column */}
-        <div className="market-panels-left">
-          {/* Your Balances */}
-          {connected && (
-            <div className="panel">
-              <div className="panel-header">
-                <span className="panel-title">Your Position</span>
-                <span className="panel-subtitle">{usdcBalance} USDC available</span>
+        <div className="detail-left">
+          {/* Probability */}
+          <div className="panel">
+            <div className="panel-hd">
+              <span className="panel-hd-title">Current Probability</span>
+              <span className="panel-hd-sub">Based on AMM reserves</span>
+            </div>
+            <div className="panel-body">
+              <div className="prob-row">
+                <div className="prob-out">
+                  <span className="prob-lbl prob-lbl-yes">YES</span>
+                  <span className="prob-pct prob-pct-yes">{yesPct}%</span>
+                  <span className="prob-price">${yesPrice} per share</span>
+                </div>
+                <div className="prob-divider" />
+                <div className="prob-out">
+                  <span className="prob-lbl prob-lbl-no">NO</span>
+                  <span className="prob-pct prob-pct-no">{noPct}%</span>
+                  <span className="prob-price">${noPrice} per share</span>
+                </div>
               </div>
-              <div className="panel-body">
-                <div className="position-stats">
-                  <div className="position-stat position-stat-yes">
-                    <span className="position-stat-label">YES Shares</span>
-                    <span className="position-stat-value">{yesBalance}</span>
-                  </div>
-                  <div className="position-stat position-stat-no">
-                    <span className="position-stat-label">NO Shares</span>
-                    <span className="position-stat-value">{noBalance}</span>
+
+              <div className="prob-bar">
+                <div className="prob-bar-fill" style={{ width: `${yesPct}%` }} />
+              </div>
+              <div className="prob-bar-lbls">
+                <span style={{ color: "var(--yes-dk)", fontWeight: 700 }}>{yesPct}% YES</span>
+                <span style={{ color: "var(--no-dk)",  fontWeight: 700 }}>{noPct}% NO</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Pool stats */}
+          <div className="panel">
+            <div className="panel-hd">
+              <span className="panel-hd-title">Market Stats</span>
+            </div>
+            <div className="pool-grid">
+              <div className="pool-cell">
+                <div className="pool-lbl">YES Pool</div>
+                <div className="pool-val pool-val-yes">{fmtUSDC(market.totalYes)}</div>
+              </div>
+              <div className="pool-cell">
+                <div className="pool-lbl">NO Pool</div>
+                <div className="pool-val pool-val-no">{fmtUSDC(market.totalNo)}</div>
+              </div>
+              <div className="pool-cell">
+                <div className="pool-lbl">Total Volume</div>
+                <div className="pool-val">
+                  {fmtUSDC((BigInt(market.totalYes) + BigInt(market.totalNo)).toString())}
+                </div>
+              </div>
+              <div className="pool-cell">
+                <div className="pool-lbl">Market ID</div>
+                <div className="pool-val" style={{ fontSize: 13 }}>#{market.marketId}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* AMM Reserves */}
+          {amm && (
+            <div className="panel">
+              <div className="panel-hd">
+                <span className="panel-hd-title">AMM Reserves</span>
+                <span className="panel-hd-sub">Constant product market maker</span>
+              </div>
+              <div className="pool-grid">
+                <div className="pool-cell">
+                  <div className="pool-lbl">YES Reserve</div>
+                  <div className="pool-val pool-val-yes">{fmtShares(amm.yesReserve)}</div>
+                </div>
+                <div className="pool-cell">
+                  <div className="pool-lbl">NO Reserve</div>
+                  <div className="pool-val pool-val-no">{fmtShares(amm.noReserve)}</div>
+                </div>
+                <div className="pool-cell">
+                  <div className="pool-lbl">k (invariant)</div>
+                  <div className="pool-val" style={{ fontSize: 11, letterSpacing: 0 }}>
+                    {totalRes === 0n ? "—" : (Number(yesRes) * Number(noRes) / 1e12).toFixed(0)}
                   </div>
                 </div>
-
-                {/* Settlement */}
-                {(market.outcome === "Yes" || market.outcome === "No" || market.outcome === "Cancelled") && (
-                  <div className="settlement-action">
-                    <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.5 }}>
-                      {market.outcome === "Cancelled"
-                        ? "This market was cancelled. Claim your refund below."
-                        : `Market resolved ${market.outcome.toUpperCase()}. Claim your winnings below.`}
-                    </p>
-                    <button className="btn-primary" style={{ width: "100%" }} onClick={handleClaim} disabled={actionLoading}>
-                      {actionLoading ? "Processing…" : "Claim Winnings / Refund"}
-                    </button>
-                  </div>
-                )}
+                <div className="pool-cell">
+                  <div className="pool-lbl">Fee</div>
+                  <div className="pool-val">{(market.feeBps / 100).toFixed(2)}%</div>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Admin panel */}
-          {isAuthority && market.outcome === "Unresolved" && (
-            <div className="panel admin-panel">
-              <div className="panel-header">
-                <span className="panel-title">Admin Controls</span>
-                <span className="panel-subtitle">Market creator</span>
+          {/* Your position */}
+          {connected && (
+            <div className="panel pos-panel">
+              <div className="panel-hd">
+                <span className="panel-hd-title">Your Position</span>
+                <span className="panel-hd-sub">{usdcBalance} USDC available</span>
               </div>
-              <div className="panel-body admin-panel">
-                <p className="admin-desc">
-                  You are the creator of this market. Resolve it once the outcome is known.
-                </p>
+              <div className="pos-row">
+                <span className="pos-lbl">YES Shares</span>
+                <span className="pos-val pos-val-yes">{yesBalance}</span>
+              </div>
+              <div className="pos-row">
+                <span className="pos-lbl">NO Shares</span>
+                <span className="pos-val pos-val-no">{noBalance}</span>
+              </div>
+              {isSettled && (
+                <div className="pos-row">
+                  <button className="btn-claim" onClick={handleClaim} disabled={actionLoading}>
+                    {actionLoading ? "Processing…" : "Claim Winnings / Refund"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
-                <div className="admin-actions">
-                  <button className="btn-resolve-yes" onClick={() => handleResolve("Yes")} disabled={actionLoading}>
-                    ✓ Resolve YES
+          {/* Admin */}
+          {isAuthority && market.outcome === "Unresolved" && (
+            <div className="panel">
+              <div className="panel-hd">
+                <span className="panel-hd-title">Admin Controls</span>
+                <span className="panel-hd-sub">You created this market</span>
+              </div>
+              <div className="admin-body">
+                <p className="admin-desc">
+                  Resolve the market once the outcome is known. This action is irreversible.
+                </p>
+                <div className="admin-row">
+                  <button className="btn-res-yes" onClick={() => handleResolve("Yes")} disabled={actionLoading}>
+                    Resolve YES
                   </button>
-                  <button className="btn-resolve-no" onClick={() => handleResolve("No")} disabled={actionLoading}>
-                    ✗ Resolve NO
+                  <button className="btn-res-no" onClick={() => handleResolve("No")} disabled={actionLoading}>
+                    Resolve NO
                   </button>
-                  <button className="btn-secondary" onClick={handleCancel} disabled={actionLoading}>
-                    Cancel Market
+                  <button className="btn-cancel-mkt" onClick={handleCancel} disabled={actionLoading}>
+                    Cancel
                   </button>
                 </div>
 
-                {/* Liquidity */}
-                <div className="liquidity-section">
-                  <span className="liquidity-title">Manage AMM Liquidity</span>
-                  <span className="liquidity-desc">Supply USDC so users can start trading!</span>
-                  <div className="liquidity-inputs">
-                    <input
-                      type="number"
-                      className="form-input"
-                      placeholder="Amount (USDC or LP Shares)"
-                      value={liquidityAmount}
-                      onChange={(e) => setLiquidityAmount(e.target.value)}
-                      min="0"
-                      step="any"
-                      style={{ flex: 1 }}
-                    />
-                    <button className="btn-primary" onClick={handleAddLiquidity} disabled={actionLoading}>
-                      Add
-                    </button>
-                    <button className="btn-secondary" onClick={handleRemoveLiquidity} disabled={actionLoading}>
-                      Remove
-                    </button>
-                  </div>
+                <div className="liq-row">
+                  <input
+                    type="number"
+                    className="liq-input"
+                    placeholder="Amount (USDC / LP shares)"
+                    value={liquidityAmount}
+                    onChange={(e) => setLiquidityAmount(e.target.value)}
+                    min="0"
+                    step="any"
+                  />
+                  <button className="btn-sm btn-sm-p" onClick={handleAddLiquidity} disabled={actionLoading}>Add Liq.</button>
+                  <button className="btn-sm btn-sm-s" onClick={handleRemoveLiquidity} disabled={actionLoading}>Remove</button>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Right column — Trade panel */}
+        {/* Right column — Trading Panel */}
         {isActive && (
-          <div className="trade-panel">
-            <div className="panel-header">
-              <span className="panel-title">Trade</span>
+          <div className="tp">
+            <div className="tp-hd">
+              <span className="tp-hd-title">Trade</span>
               {connected && (
-                <span className="panel-subtitle">{usdcBalance} USDC</span>
+                <span className="tp-bal">{usdcBalance} USDC</span>
               )}
             </div>
 
             {/* Buy / Sell tabs */}
-            <div className="trade-tabs">
+            <div className="tp-tabs">
               <button
-                className={`trade-tab${tradeMode === "Buy"  ? " trade-tab-active-buy"  : ""}`}
+                className={`tp-tab tp-tab-buy${tradeMode === "Buy" ? " tp-tab-buy-a" : ""}`}
                 onClick={() => setTradeMode("Buy")}
               >
                 Buy
               </button>
               <button
-                className={`trade-tab${tradeMode === "Sell" ? " trade-tab-active-sell" : ""}`}
+                className={`tp-tab tp-tab-sell${tradeMode === "Sell" ? " tp-tab-sell-a" : ""}`}
                 onClick={() => setTradeMode("Sell")}
               >
                 Sell
               </button>
             </div>
 
-            <form className="trade-body" onSubmit={handleTrade}>
-              {/* YES / NO selector */}
-              <div className="side-selector">
+            <form className="tp-body" onSubmit={handleTrade}>
+              {/* YES / NO outcome selector */}
+              <div className="out-sel">
                 <button
                   type="button"
-                  className={`side-btn side-btn-yes${side === "Yes" ? " active-yes" : ""}`}
+                  className={`out-btn out-btn-yes${side === "Yes" ? " out-btn-yes-a" : ""}`}
                   onClick={() => setSide("Yes")}
                 >
-                  <span className="side-btn-label">YES</span>
-                  <span className="side-btn-price">{yesPercent}%</span>
-                  <span className="side-btn-chance">${yesPrice} / share</span>
+                  <span className="out-btn-side">YES</span>
+                  <span className="out-btn-pct">{yesPct}%</span>
+                  <span className="out-btn-price">${yesPrice} / share</span>
                 </button>
                 <button
                   type="button"
-                  className={`side-btn side-btn-no${side === "No" ? " active-no" : ""}`}
+                  className={`out-btn out-btn-no${side === "No" ? " out-btn-no-a" : ""}`}
                   onClick={() => setSide("No")}
                 >
-                  <span className="side-btn-label">NO</span>
-                  <span className="side-btn-price">{noPercent}%</span>
-                  <span className="side-btn-chance">${noPrice} / share</span>
+                  <span className="out-btn-side">NO</span>
+                  <span className="out-btn-pct">{noPct}%</span>
+                  <span className="out-btn-price">${noPrice} / share</span>
                 </button>
               </div>
 
               {/* Amount */}
-              <div className="amount-section">
-                <div className="amount-label">
-                  <span className="form-label">
-                    {tradeMode === "Buy" ? "Amount (USDC)" : "Shares to liquidate"}
+              <div className="amt-wrap">
+                <div className="amt-lbl-row">
+                  <span className="fld-lbl">
+                    {tradeMode === "Buy" ? "Amount" : "Shares to sell"}
                   </span>
                   {connected && (
-                    <span className="amount-balance">
-                      Balance:{" "}
+                    <span className="fld-bal">
+                      Bal:{" "}
                       <strong>
                         {tradeMode === "Buy"
                           ? `${usdcBalance} USDC`
@@ -521,58 +566,89 @@ export function MarketDetails({ marketId }: { marketId: string }) {
                     </span>
                   )}
                 </div>
-                <div className="amount-input-wrap">
+                <div className="amt-row">
                   <input
                     type="number"
-                    className="form-input amount-input"
+                    className="amt-input"
                     placeholder="0.00"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     min="0"
                     step="any"
                   />
-                  <span className="amount-suffix">
+                  <span className="amt-unit">
                     {tradeMode === "Buy" ? "USDC" : "SHRS"}
                   </span>
                 </div>
               </div>
 
-              {/* Summary */}
-              <div className="trade-summary">
-                <div className="summary-row">
-                  <span className="summary-label">Action</span>
-                  <span className="summary-value">
-                    {tradeMode}{" "}
-                    <span className={side === "Yes" ? "yes-color" : "no-color"}>{side}</span>
+              {/* Order summary */}
+              <div className="order-sum">
+                <div className="ord-row">
+                  <span className="ord-lbl">Outcome</span>
+                  <span className="ord-val" style={{ color: side === "Yes" ? "var(--yes-dk)" : "var(--no-dk)" }}>
+                    {tradeMode} {side}
                   </span>
                 </div>
-                <div className="summary-row">
-                  <span className="summary-label">Protocol Fee</span>
-                  <span className="summary-value">{(market.feeBps / 100).toFixed(2)}%</span>
-                </div>
-                <div className="summary-row">
-                  <span className="summary-label">Current Price</span>
-                  <span className="summary-value">
-                    ${side === "Yes" ? yesPrice : noPrice} / share
-                  </span>
+                {tradeMode === "Buy" && (
+                  <>
+                    <div className="ord-row">
+                      <span className="ord-lbl">Est. shares</span>
+                      <span className="ord-val">{amountNum > 0 ? estShares : "—"}</span>
+                    </div>
+                    <div className="ord-row">
+                      <span className="ord-lbl">Max payout</span>
+                      <span className="ord-val">{amountNum > 0 ? `$${estPayout}` : "—"}</span>
+                    </div>
+                    <div className="ord-row">
+                      <span className="ord-lbl">Price impact</span>
+                      <span className="ord-val">~{priceImpact}%</span>
+                    </div>
+                  </>
+                )}
+                <div className="ord-row">
+                  <span className="ord-lbl">Protocol fee</span>
+                  <span className="ord-val">{(market.feeBps / 100).toFixed(2)}%</span>
                 </div>
               </div>
 
-              {tradeError && <div className="form-error" style={{ marginBottom: 16 }}>{tradeError}</div>}
+              {tradeError && <div className="tp-error">{tradeError}</div>}
 
-              <button
-                type="submit"
-                className="btn-primary"
-                style={{ width: "100%", padding: "14px" }}
-                disabled={tradeLoading || !connected}
-              >
-                {!connected
-                  ? "Connect Wallet"
-                  : tradeLoading
-                  ? "Processing…"
-                  : `${tradeMode} ${side}`}
-              </button>
+              {connected ? (
+                <button
+                  type="submit"
+                  className={tradeMode === "Buy" ? "btn-buy" : "btn-sell"}
+                  disabled={submitDisabled}
+                >
+                  {tradeLoading
+                    ? "Processing…"
+                    : `${tradeMode} ${side} ${amountNum > 0 ? `— $${amountNum.toFixed(2)}` : ""}`}
+                </button>
+              ) : (
+                <button type="button" className="btn-conn" disabled>
+                  Connect wallet to trade
+                </button>
+              )}
             </form>
+          </div>
+        )}
+
+        {/* Resolved / expired — no trading panel, show settlement panel */}
+        {!isActive && connected && isSettled && (
+          <div className="panel" style={{ alignSelf: "start" }}>
+            <div className="panel-hd">
+              <span className="panel-hd-title">Settlement</span>
+            </div>
+            <div style={{ padding: "14px" }}>
+              <p style={{ fontSize: 13, color: "var(--t2)", marginBottom: 12, lineHeight: 1.5 }}>
+                {market.outcome === "Cancelled"
+                  ? "This market was cancelled. Claim a full refund of your shares."
+                  : `Market resolved ${market.outcome.toUpperCase()}. Winning shares pay out $1.00 each.`}
+              </p>
+              <button className="btn-claim" onClick={handleClaim} disabled={actionLoading}>
+                {actionLoading ? "Processing…" : "Claim Winnings / Refund"}
+              </button>
+            </div>
           </div>
         )}
       </div>

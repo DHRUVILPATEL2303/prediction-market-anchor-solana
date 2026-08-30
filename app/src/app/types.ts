@@ -8,6 +8,8 @@ export interface MarketAccount {
   totalYes: string;
   totalNo: string;
   totalAmount: string; // new field in IDL
+  yesReserve?: string;
+  noReserve?: string;
   treasury: string;
   outcome: "Unresolved" | "Yes" | "No" | "Cancelled";
   paymentMint: string;

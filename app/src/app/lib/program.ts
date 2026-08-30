@@ -490,13 +490,27 @@ export async function fetchAllMarkets(
       ],
     });
 
+    let amms: any[] = [];
+    try {
+      amms = await program.account.ammPool.all();
+    } catch (e) {
+      console.warn("Failed to fetch AMMs in fetchAllMarkets", e);
+    }
+    const ammMap = new Map();
+    for (const a of amms) {
+      ammMap.set(a.account.market.toString(), a.account);
+    }
+
     const validMarkets: MarketAccount[] = [];
 
     for (const raw of rawAccounts) {
       try {
         const decoded = await program.coder.accounts.decode("market", raw.account.data);
+        const marketPubkey = raw.pubkey.toString();
+        const amm = ammMap.get(marketPubkey);
+        
         validMarkets.push({
-          publicKey: raw.pubkey.toString(),
+          publicKey: marketPubkey,
           marketId: decoded.marketId.toString(),
           question: decoded.question,
           authority: decoded.authority.toString(),
@@ -505,6 +519,8 @@ export async function fetchAllMarkets(
           totalYes: decoded.totalYes.toString(),
           totalNo: decoded.totalNo.toString(),
           totalAmount: decoded.totalAmount ? decoded.totalAmount.toString() : "0",
+          yesReserve: amm ? amm.yesReserve.toString() : undefined,
+          noReserve: amm ? amm.noReserve.toString() : undefined,
           treasury: decoded.treasury.toString(),
           outcome: decoded.outcome.unresolved
             ? "Unresolved"
