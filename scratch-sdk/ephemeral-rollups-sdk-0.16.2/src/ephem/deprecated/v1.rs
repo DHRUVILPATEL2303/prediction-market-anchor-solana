@@ -1,0 +1,487 @@
+#![allow(deprecated)]
+
+use crate::compat::{self, AsModern, Compat, Modern};
+use crate::ephem::deprecated::v1::utils::accounts_to_indices;
+use magicblock_magic_program_api::args::{
+    ActionArgs, AddActionCallbackArgs, BaseActionArgs, CommitAndUndelegateArgs, CommitTypeArgs,
+    MagicBaseIntentArgs, ShortAccountMeta, UndelegateTypeArgs,
+};
+use magicblock_magic_program_api::instruction::MagicBlockInstruction;
+use solana_program::instruction::{AccountMeta, Instruction};
+use solana_program::program::invoke;
+use std::collections::{HashMap, HashSet};
+
+const EXPECTED_KEY_MSG: &str = "Key expected to exist!";
+
+/// Instruction builder for magicprogram
+#[deprecated(since = "0.7.0", note = "Use `MagicIntentBundleBuilder` instead")]
+pub struct MagicInstructionBuilder<'info> {
+    pub payer: compat::AccountInfo<'info>,
+    pub magic_context: compat::AccountInfo<'info>,
+    pub magic_program: compat::AccountInfo<'info>,
+    pub magic_fee_vault: Option<compat::AccountInfo<'info>>,
+    pub magic_action: MagicAction<'info>,
+}
+
+impl<'info> MagicInstructionBuilder<'info> {
+    /// Sets an optional magic fee vault account to be passed at index 2
+    /// (right after payer and magic_context). Required when the payer is delegated.
+    pub fn magic_fee_vault(mut self, vault: compat::AccountInfo<'info>) -> Self {
+        self.magic_fee_vault = Some(vault);
+        self
+    }
+
+    /// Build instruction for supplied an action and prepares accounts
+    pub fn build(self) -> (Vec<compat::AccountInfo<'info>>, compat::Instruction) {
+        // set those to be first
+        let mut all_accounts = vec![self.payer, self.magic_context];
+        if let Some(vault) = self.magic_fee_vault {
+            all_accounts.push(vault);
+        }
+        // collect all accounts to be used in instruction
+        self.magic_action.collect_accounts(&mut all_accounts);
+        // filter duplicates & get indices map
+        let indices_map = utils::filter_duplicates_with_map(&mut all_accounts);
+
+        // construct args of ScheduleAction instruction
+        let args = self.magic_action.build_args(&indices_map);
+        // create accounts metas
+        let accounts_meta = all_accounts
+            .iter()
+            .map(|account| AccountMeta {
+                pubkey: *account.key.as_modern(),
+                is_signer: account.is_signer,
+                is_writable: account.is_writable,
+            })
+            .collect();
+
+        (
+            all_accounts,
+            Instruction::new_with_bincode(
+                *self.magic_program.key.as_modern(),
+                &MagicBlockInstruction::ScheduleIntentBundle(args.into()),
+                accounts_meta,
+            )
+            .compat(),
+        )
+    }
+
+    /// Builds instruction for action & invokes magicprogram
+    pub fn build_and_invoke(self) -> compat::ProgramResult {
+        let (accounts, ix) = self.build();
+        invoke(&ix.modern(), &accounts.modern()).compat()
+    }
+}
+
+/// Action that user wants to perform on base layer
+#[deprecated(
+    since = "0.7.0",
+    note = "Use `MagicIntentBundleBuilder` with `MagicBaseIntent` instead"
+)]
+pub enum MagicAction<'info> {
+    BaseActions(Vec<CallHandler<'info>>),
+    Commit(CommitType<'info>),
+    CommitAndUndelegate(CommitAndUndelegate<'info>),
+}
+
+impl<'info> MagicAction<'info> {
+    /// Collects accounts. May contain duplicates that would have to be processd
+    /// TODO: could be &mut Vec<&'a compat::AccountInfo<'info>>
+    fn collect_accounts(&self, accounts_container: &mut Vec<compat::AccountInfo<'info>>) {
+        match self {
+            MagicAction::BaseActions(call_handlers) => call_handlers
+                .iter()
+                .for_each(|call_handler| call_handler.collect_accounts(accounts_container)),
+            MagicAction::Commit(commit_type) => commit_type.collect_accounts(accounts_container),
+            MagicAction::CommitAndUndelegate(commit_and_undelegate) => {
+                commit_and_undelegate.collect_accounts(accounts_container)
+            }
+        }
+    }
+
+    /// Creates argument for CPI
+    fn build_args(self, indices_map: &HashMap<compat::Pubkey, u8>) -> MagicBaseIntentArgs {
+        match self {
+            MagicAction::BaseActions(call_handlers) => {
+                let call_handlers_args = call_handlers
+                    .into_iter()
+                    .map(|call_handler| call_handler.into_args(indices_map))
+                    .collect();
+                MagicBaseIntentArgs::BaseActions(call_handlers_args)
+            }
+            MagicAction::Commit(value) => MagicBaseIntentArgs::Commit(value.into_args(indices_map)),
+            MagicAction::CommitAndUndelegate(value) => {
+                MagicBaseIntentArgs::CommitAndUndelegate(value.into_args(indices_map))
+            }
+        }
+    }
+}
+
+/// Type of commit , can be whether standalone or with some custom actions on Base layer post commit
+#[deprecated(since = "0.7.0", note = "Use `CommitIntentBuilder` instead")]
+pub enum CommitType<'info> {
+    /// Regular commit without actions
+    Standalone(Vec<compat::AccountInfo<'info>>), // accounts to commit
+    /// Commits accounts and runs actions
+    WithHandler {
+        commited_accounts: Vec<compat::AccountInfo<'info>>,
+        call_handlers: Vec<CallHandler<'info>>,
+        callbacks: Vec<Option<ActionCallback>>,
+    },
+}
+
+impl<'info> CommitType<'info> {
+    pub fn committed_accounts(&self) -> &Vec<compat::AccountInfo<'info>> {
+        match self {
+            Self::Standalone(commited_accounts) => commited_accounts,
+            Self::WithHandler {
+                commited_accounts, ..
+            } => commited_accounts,
+        }
+    }
+
+    pub(crate) fn committed_accounts_mut(&mut self) -> &mut Vec<compat::AccountInfo<'info>> {
+        match self {
+            Self::Standalone(commited_accounts) => commited_accounts,
+            Self::WithHandler {
+                commited_accounts, ..
+            } => commited_accounts,
+        }
+    }
+
+    pub(crate) fn dedup(&mut self) -> HashSet<compat::Pubkey> {
+        let committed_accounts = self.committed_accounts_mut();
+        let mut seen = HashSet::with_capacity(committed_accounts.len());
+        committed_accounts.retain(|el| seen.insert(*el.key));
+
+        seen
+    }
+
+    pub(crate) fn collect_accounts(
+        &self,
+        accounts_container: &mut Vec<compat::AccountInfo<'info>>,
+    ) {
+        match self {
+            Self::Standalone(accounts) => accounts_container.extend(accounts.clone()),
+            Self::WithHandler {
+                commited_accounts,
+                call_handlers,
+                ..
+            } => {
+                accounts_container.extend(commited_accounts.clone());
+                call_handlers
+                    .iter()
+                    .for_each(|call_handler| call_handler.collect_accounts(accounts_container));
+            }
+        }
+    }
+
+    pub(crate) fn into_args(self, indices_map: &HashMap<compat::Pubkey, u8>) -> CommitTypeArgs {
+        match self {
+            Self::Standalone(accounts) => {
+                let accounts_indices = accounts_to_indices(accounts.as_slice(), indices_map);
+                CommitTypeArgs::Standalone(accounts_indices)
+            }
+            Self::WithHandler {
+                commited_accounts,
+                call_handlers,
+                ..
+            } => {
+                let commited_accounts_indices =
+                    accounts_to_indices(commited_accounts.as_slice(), indices_map);
+                let call_handlers_args = call_handlers
+                    .into_iter()
+                    .map(|call_handler| call_handler.into_args(indices_map))
+                    .collect();
+                CommitTypeArgs::WithBaseActions {
+                    committed_accounts: commited_accounts_indices,
+                    base_actions: call_handlers_args,
+                }
+            }
+        }
+    }
+
+    pub(crate) fn extract_callbacks(&mut self, idx: &mut u8, out: &mut Vec<(u8, ActionCallback)>) {
+        if let Self::WithHandler {
+            call_handlers,
+            callbacks,
+            ..
+        } = self
+        {
+            for cb_opt in callbacks.iter_mut().take(call_handlers.len()) {
+                if let Some(cb) = cb_opt.take() {
+                    out.push((*idx, cb));
+                }
+                *idx += 1;
+            }
+        }
+    }
+
+    pub(crate) fn merge(&mut self, mut other: Self) {
+        let take = |value: &mut _| -> (
+            Vec<compat::AccountInfo>,
+            Vec<CallHandler>,
+            Vec<Option<ActionCallback>>,
+        ) {
+            use std::mem::take;
+            match value {
+                CommitType::Standalone(value) => (take(value), vec![], vec![]),
+                CommitType::WithHandler {
+                    commited_accounts,
+                    call_handlers,
+                    callbacks,
+                } => (
+                    take(commited_accounts),
+                    take(call_handlers),
+                    take(callbacks),
+                ),
+            }
+        };
+
+        let (mut accounts, mut actions, mut callbacks) = take(self);
+        let (other_accounts, other_actions, other_callbacks) = take(&mut other);
+        accounts.extend(other_accounts);
+        actions.extend(other_actions);
+        callbacks.extend(other_callbacks);
+
+        if actions.is_empty() {
+            *self = CommitType::Standalone(accounts)
+        } else {
+            *self = CommitType::WithHandler {
+                commited_accounts: accounts,
+                call_handlers: actions,
+                callbacks,
+            }
+        };
+    }
+}
+
+/// Type of undelegate, can be whether standalone or with some custom actions on Base layer post commit
+/// No CommitedAccounts since it is only used with CommitAction.
+#[deprecated(
+    since = "0.7.0",
+    note = "Use `CommitAndUndelegateIntentBuilder` instead"
+)]
+pub enum UndelegateType<'info> {
+    Standalone,
+    WithHandler {
+        call_handlers: Vec<CallHandler<'info>>,
+        callbacks: Vec<Option<ActionCallback>>,
+    },
+}
+
+impl<'info> UndelegateType<'info> {
+    fn collect_accounts(&self, accounts_container: &mut Vec<compat::AccountInfo<'info>>) {
+        match self {
+            Self::Standalone => {}
+            Self::WithHandler { call_handlers, .. } => call_handlers
+                .iter()
+                .for_each(|call_handler| call_handler.collect_accounts(accounts_container)),
+        }
+    }
+
+    fn into_args(self, indices_map: &HashMap<compat::Pubkey, u8>) -> UndelegateTypeArgs {
+        match self {
+            Self::Standalone => UndelegateTypeArgs::Standalone,
+            Self::WithHandler { call_handlers, .. } => {
+                let call_handlers_args = call_handlers
+                    .into_iter()
+                    .map(|call_handler| call_handler.into_args(indices_map))
+                    .collect();
+                UndelegateTypeArgs::WithBaseActions {
+                    base_actions: call_handlers_args,
+                }
+            }
+        }
+    }
+
+    pub(crate) fn extract_callbacks(&mut self, idx: &mut u8, out: &mut Vec<(u8, ActionCallback)>) {
+        if let Self::WithHandler {
+            call_handlers,
+            callbacks,
+        } = self
+        {
+            for cb_opt in callbacks.iter_mut().take(call_handlers.len()) {
+                if let Some(cb) = cb_opt.take() {
+                    out.push((*idx, cb));
+                }
+                *idx += 1;
+            }
+        }
+    }
+
+    pub(crate) fn merge(&mut self, other: Self) {
+        let this = std::mem::replace(self, UndelegateType::Standalone);
+        *self = match (this, other) {
+            (UndelegateType::Standalone, UndelegateType::Standalone) => UndelegateType::Standalone,
+            (UndelegateType::Standalone, v @ UndelegateType::WithHandler { .. })
+            | (v @ UndelegateType::WithHandler { .. }, UndelegateType::Standalone) => v,
+            (
+                UndelegateType::WithHandler {
+                    call_handlers: mut a_h,
+                    callbacks: mut a_c,
+                },
+                UndelegateType::WithHandler {
+                    call_handlers: b_h,
+                    callbacks: b_c,
+                },
+            ) => {
+                a_h.extend(b_h);
+                a_c.extend(b_c);
+                UndelegateType::WithHandler {
+                    call_handlers: a_h,
+                    callbacks: a_c,
+                }
+            }
+        };
+    }
+}
+
+#[deprecated(
+    since = "0.7.0",
+    note = "Use `CommitAndUndelegateIntentBuilder` instead"
+)]
+pub struct CommitAndUndelegate<'info> {
+    pub commit_type: CommitType<'info>,
+    pub undelegate_type: UndelegateType<'info>,
+}
+
+impl<'info> CommitAndUndelegate<'info> {
+    pub(crate) fn collect_accounts(
+        &self,
+        accounts_container: &mut Vec<compat::AccountInfo<'info>>,
+    ) {
+        self.commit_type.collect_accounts(accounts_container);
+        self.undelegate_type.collect_accounts(accounts_container);
+    }
+
+    pub(crate) fn into_args(
+        self,
+        indices_map: &HashMap<compat::Pubkey, u8>,
+    ) -> CommitAndUndelegateArgs {
+        let commit_type_args = self.commit_type.into_args(indices_map);
+        let undelegate_type_args = self.undelegate_type.into_args(indices_map);
+        CommitAndUndelegateArgs {
+            commit_type: commit_type_args,
+            undelegate_type: undelegate_type_args,
+        }
+    }
+
+    pub(crate) fn dedup(&mut self) -> HashSet<compat::Pubkey> {
+        self.commit_type.dedup()
+    }
+
+    pub(crate) fn extract_callbacks(&mut self, idx: &mut u8, out: &mut Vec<(u8, ActionCallback)>) {
+        self.commit_type.extract_callbacks(idx, out);
+        self.undelegate_type.extract_callbacks(idx, out);
+    }
+
+    pub(crate) fn merge(&mut self, other: Self) {
+        self.commit_type.merge(other.commit_type);
+        self.undelegate_type.merge(other.undelegate_type);
+    }
+}
+
+/// Callback to invoke on the base layer after an action executes.
+///
+/// Attach via `add_*_action_with_callback` on the intent builders. The flat
+/// `action_index` required by `AddActionCallback` is computed automatically at
+/// invoke time — the callback travels with its action through merge/normalize.
+pub struct ActionCallback {
+    pub destination_program: compat::Pubkey,
+    pub discriminator: Vec<u8>,
+    pub payload: Vec<u8>,
+    pub compute_units: u32,
+    pub accounts: Vec<ShortAccountMeta>,
+}
+
+impl ActionCallback {
+    pub(crate) fn into_args(self, action_index: u8) -> AddActionCallbackArgs {
+        AddActionCallbackArgs {
+            action_index,
+            destination_program: self.destination_program.to_bytes().into(),
+            discriminator: self.discriminator,
+            payload: self.payload,
+            compute_units: self.compute_units,
+            accounts: self.accounts,
+        }
+    }
+}
+
+pub struct CallHandler<'info> {
+    pub args: ActionArgs,
+    pub compute_units: u32,
+    pub escrow_authority: compat::AccountInfo<'info>,
+    pub destination_program: compat::Pubkey,
+    pub accounts: Vec<ShortAccountMeta>,
+}
+
+impl<'info> CallHandler<'info> {
+    pub(crate) fn collect_accounts(&self, container: &mut Vec<compat::AccountInfo<'info>>) {
+        container.push(self.escrow_authority.clone());
+    }
+
+    pub(crate) fn into_args(self, indices_map: &HashMap<compat::Pubkey, u8>) -> BaseActionArgs {
+        let escrow_authority_index = indices_map
+            .get(self.escrow_authority.key)
+            .expect(EXPECTED_KEY_MSG);
+
+        BaseActionArgs {
+            args: self.args,
+            compute_units: self.compute_units,
+            destination_program: self.destination_program.to_bytes().into(),
+            escrow_authority: *escrow_authority_index,
+            accounts: self.accounts,
+        }
+    }
+}
+
+pub(crate) mod utils {
+    use super::EXPECTED_KEY_MSG;
+    use crate::compat;
+    use std::collections::hash_map::Entry;
+    use std::collections::HashMap;
+
+    #[inline(always)]
+    pub fn accounts_to_indices(
+        accounts: &[compat::AccountInfo],
+        indices_map: &HashMap<compat::Pubkey, u8>,
+    ) -> Vec<u8> {
+        accounts
+            .iter()
+            .map(|account| *indices_map.get(account.key).expect(EXPECTED_KEY_MSG))
+            .collect()
+    }
+
+    /// Removes duplicates from array by pubkey
+    /// Returns a map of key to index in cleaned array
+    pub fn filter_duplicates_with_map(
+        container: &mut Vec<compat::AccountInfo>,
+    ) -> HashMap<compat::Pubkey, u8> {
+        let mut map = HashMap::new();
+        container.retain(|el| match map.entry(*el.key) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                // insert dummy value. Can't use index counter here
+                entry.insert(1);
+                true
+            }
+        });
+        // update map with valid indices
+        container.iter().enumerate().for_each(|(i, account)| {
+            *map.get_mut(account.key).unwrap() = i as u8;
+        });
+
+        map
+    }
+}
+
+#[test]
+fn test_instruction_equality() {
+    let serialized = bincode::serialize(&MagicBlockInstruction::ScheduleCommit).unwrap();
+    assert_eq!(vec![1, 0, 0, 0], serialized);
+
+    let serialized =
+        bincode::serialize(&MagicBlockInstruction::ScheduleCommitAndUndelegate).unwrap();
+    assert_eq!(vec![2, 0, 0, 0], serialized);
+}

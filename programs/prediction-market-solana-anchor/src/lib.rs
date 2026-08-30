@@ -7,6 +7,8 @@ pub mod state;
 use anchor_lang::prelude::*;
 
 pub use constants::*;
+use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
+use ephemeral_rollups_sdk::cpi::DelegateConfig;
 pub use error::*;
 pub use events::*;
 use instructions::*;
@@ -14,8 +16,12 @@ pub use state::*; // NOTE: private use of instructions::*; to bring Context stru
 
 declare_id!("7PBhPD5n3Qe18BoFR4uiRNVTCoqz3RYh9mypf6CC3tww");
 
+#[ephemeral]
+
+
 #[program]
 pub mod prediction_market_solana_anchor {
+
     use super::*;
 
     pub fn initialize_market(
@@ -74,4 +80,43 @@ pub mod prediction_market_solana_anchor {
     pub fn remove_liquidity(ctx: Context<RemoveLiquidity>, shares: u64) -> Result<()> {
         instructions::remove_liquidity::remove_liquidity(ctx, shares)
     }
+
+    pub fn delegate_amm(ctx: Context<DelegateAmm>) -> Result<()> {
+        let market_key = ctx.accounts.market.key();
+        ctx.accounts.delegate_amm(
+            &ctx.accounts.payer,
+            &[b"amm", market_key.as_ref()],
+            DelegateConfig::default(),
+        )?;
+        Ok(())
+    }
+
+    pub fn undelegate_amm(ctx: Context<UndelegateAmm>) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[delegate]
+#[derive(Accounts)]
+pub struct DelegateAmm<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub market: Account<'info, Market>,
+
+    /// CHECK: PDA bump seed derived from market key
+    #[account(mut, del, seeds = [b"amm", market.key().as_ref()], bump)]
+    pub amm: UncheckedAccount<'info>,
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct UndelegateAmm<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    pub market: Account<'info, Market>,
+
+    /// CHECK: PDA bump seed derived from market key
+    #[account(mut, seeds = [b"amm", market.key().as_ref()], bump)]
+    pub amm: UncheckedAccount<'info>,
 }

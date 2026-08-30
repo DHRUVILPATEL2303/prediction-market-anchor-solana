@@ -1,0 +1,51 @@
+#[cfg(all(feature = "anchor-modern", feature = "anchor-compat"))]
+compile_error!("features `anchor-modern` and `anchor-compat` are mutually exclusive");
+
+#[cfg(all(
+    feature = "anchor-modern",
+    feature = "backward-compat",
+    not(feature = "anchor-compat")
+))]
+compile_error!("feature `anchor-modern` cannot be combined with `backward-compat`; use `anchor-compat` instead");
+
+#[cfg(feature = "anchor-support")]
+pub mod anchor;
+pub mod consts;
+pub mod cpi;
+pub mod crank;
+pub mod delegate_args;
+pub mod ephem;
+#[cfg(any(feature = "anchor-support", feature = "modular-sdk",))]
+pub mod ephemeral_accounts;
+pub mod types;
+pub mod utils;
+pub mod vrf;
+
+pub mod compat;
+
+#[cfg(feature = "access-control")]
+pub mod access_control;
+#[cfg(feature = "spl")]
+pub mod spl;
+
+pub use dlp_api;
+pub use dlp_api::args::CallHandlerArgs;
+#[cfg(feature = "instruction")]
+pub use dlp_api::instruction_builder;
+pub use dlp_api::pda;
+pub use dlp_api::{
+    commit_record_seeds_from_delegated_account, commit_state_seeds_from_delegated_account,
+    delegate_buffer_seeds_from_delegated_account, delegation_metadata_seeds_from_delegated_account,
+    delegation_record_seeds_from_delegated_account, ephemeral_balance_seeds_from_payer,
+    fees_vault_seeds, program_config_seeds_from_program_id,
+    undelegate_buffer_seeds_from_delegated_account,
+    undelegation_request_seeds_from_delegated_account, validator_fees_vault_seeds_from_validator,
+};
+pub use magicblock_magic_program_api::args::{
+    ActionArgs, BaseActionArgs, CommitAndUndelegateArgs, CommitTypeArgs, MagicBaseIntentArgs,
+    ShortAccountMeta, UndelegateTypeArgs,
+};
+
+pub const fn id() -> compat::Pubkey {
+    compat::Pubkey::new_from_array(consts::DELEGATION_PROGRAM_ID.to_bytes())
+}
