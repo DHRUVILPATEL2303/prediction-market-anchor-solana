@@ -137,7 +137,16 @@ export function useMarketActions() {
       PROGRAM_ID
     );
 
-    const tx = await program.methods
+    const [providerYesAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), yesMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    const [providerNoAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), noMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    const ixAddLiquidity = await program.methods
       .addLiquidity(paymentAmountBN)
       .accounts({
         provider: wallet.publicKey,
@@ -145,18 +154,27 @@ export function useMarketActions() {
         amm,
         ammAuthority,
         outcomeAuthority,
+        paymentVault,
+        providerPaymentAccount: providerTA,
         yesMint,
         noMint,
-        paymentVault,
         yesVault,
         noVault,
+        providerYesAccount,
+        providerNoAccount,
         lpPosition,
-        providerPaymentAccount: providerTA,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
-      .rpc();
-    return { tx };
+      .instruction();
+
+    const tx = new Transaction();
+    tx.add(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, providerYesAccount, wallet.publicKey, yesMint));
+    tx.add(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, providerNoAccount, wallet.publicKey, noMint));
+    tx.add(ixAddLiquidity);
+
+    const signature = await wallet.sendTransaction(tx, connection);
+    return { tx: signature };
   }
 
   async function removeLiquidity(
@@ -167,38 +185,48 @@ export function useMarketActions() {
     if (!program || !wallet.publicKey) throw new Error("Wallet not connected");
 
     const market = new PublicKey(marketPubkey);
-    const providerTA = new PublicKey(providerTokenAccount);
     const sharesBN = new BN(shares);
 
     const [amm] = PublicKey.findProgramAddressSync([Buffer.from("amm"), market.toBuffer()], PROGRAM_ID);
     const [ammAuthority] = PublicKey.findProgramAddressSync([Buffer.from("amm-authority"), market.toBuffer()], PROGRAM_ID);
-    const [outcomeAuthority] = PublicKey.findProgramAddressSync([Buffer.from("outcome-authority"), market.toBuffer()], PROGRAM_ID);
     const [yesMint] = PublicKey.findProgramAddressSync([Buffer.from("yes-mint"), market.toBuffer()], PROGRAM_ID);
     const [noMint] = PublicKey.findProgramAddressSync([Buffer.from("no-mint"), market.toBuffer()], PROGRAM_ID);
-    const [paymentVault] = PublicKey.findProgramAddressSync([Buffer.from("payment-vault"), market.toBuffer()], PROGRAM_ID);
     const [yesVault] = PublicKey.findProgramAddressSync([Buffer.from("yes-vault"), market.toBuffer()], PROGRAM_ID);
     const [noVault] = PublicKey.findProgramAddressSync([Buffer.from("no-vault"), market.toBuffer()], PROGRAM_ID);
     const [lpPosition] = PublicKey.findProgramAddressSync([Buffer.from("lp-position"), wallet.publicKey.toBuffer(), amm.toBuffer()], PROGRAM_ID);
 
-    const tx = await program.methods
+    const [providerYesAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), yesMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    const [providerNoAccount] = PublicKey.findProgramAddressSync(
+      [wallet.publicKey.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), noMint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    const ixRemoveLiquidity = await program.methods
       .removeLiquidity(sharesBN)
       .accounts({
         provider: wallet.publicKey,
         market,
         amm,
         ammAuthority,
-        outcomeAuthority,
-        yesMint,
-        noMint,
-        paymentVault,
         yesVault,
         noVault,
+        providerYesAccount,
+        providerNoAccount,
         lpPosition,
-        providerPaymentAccount: providerTA,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
-      .rpc();
-    return { tx };
+      .instruction();
+
+    const tx = new Transaction();
+    tx.add(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, providerYesAccount, wallet.publicKey, yesMint));
+    tx.add(createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, providerNoAccount, wallet.publicKey, noMint));
+    tx.add(ixRemoveLiquidity);
+
+    const signature = await wallet.sendTransaction(tx, connection);
+    return { tx: signature };
   }
 
   async function buyShares(
