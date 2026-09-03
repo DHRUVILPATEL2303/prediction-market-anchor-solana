@@ -10,6 +10,7 @@ pub struct MintCompleteSet<'info> {
     pub user: Signer<'info>,
 
     #[account(
+        mut,
         seeds = [
             b"market",
             market.authority.as_ref(),
@@ -17,7 +18,7 @@ pub struct MintCompleteSet<'info> {
         ],
         bump = market.bump
     )]
-    pub market:Box< Account<'info, Market>>,
+    pub market: Box<Account<'info, Market>>,
 
     /// CHECK: PDA used as the mint authority for YES/NO outcome mints.
     #[account(
@@ -39,7 +40,7 @@ pub struct MintCompleteSet<'info> {
         constraint = payment_vault.mint == market.payment_mint
             @ PredictionMarketError::InvalidMint
     )]
-    pub payment_vault:Box< Account<'info, TokenAccount>>,
+    pub payment_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -48,7 +49,7 @@ pub struct MintCompleteSet<'info> {
         constraint = user_payment_account.mint == market.payment_mint
             @ PredictionMarketError::InvalidMint
     )]
-    pub user_payment_account:Box< Account<'info, TokenAccount>>,
+    pub user_payment_account: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -58,7 +59,7 @@ pub struct MintCompleteSet<'info> {
         ],
         bump
     )]
-    pub yes_mint:Box< Account<'info, Mint>>,
+    pub yes_mint: Box<Account<'info, Mint>>,
 
     #[account(
         mut,
@@ -68,7 +69,7 @@ pub struct MintCompleteSet<'info> {
         ],
         bump
     )]
-    pub no_mint:Box< Account<'info, Mint>>,
+    pub no_mint: Box<Account<'info, Mint>>,
 
     #[account(
         mut,
@@ -77,7 +78,7 @@ pub struct MintCompleteSet<'info> {
         constraint = user_yes_account.mint == yes_mint.key()
             @ PredictionMarketError::InvalidMint
     )]
-    pub user_yes_account:Box< Account<'info, TokenAccount>>,
+    pub user_yes_account: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -86,7 +87,7 @@ pub struct MintCompleteSet<'info> {
         constraint = user_no_account.mint == no_mint.key()
             @ PredictionMarketError::InvalidMint
     )]
-    pub user_no_account:Box< Account<'info, TokenAccount>>,
+    pub user_no_account: Box<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
 }
@@ -94,7 +95,7 @@ pub struct MintCompleteSet<'info> {
 pub fn mint_complete_set(ctx: Context<MintCompleteSet>, amount: u64) -> Result<()> {
     require!(amount > 0, PredictionMarketError::InvalidAmount);
 
-    let market = &ctx.accounts.market;
+    let market = &mut ctx.accounts.market;
 
     require!(
         market.outcome == Outcome::Unresolved,
@@ -152,6 +153,19 @@ pub fn mint_complete_set(ctx: Context<MintCompleteSet>, amount: u64) -> Result<(
     );
 
     mint_to(no_mint_ctx, amount)?;
+
+    market.total_yes = market
+        .total_yes
+        .checked_add(amount)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+    market.total_no = market
+        .total_no
+        .checked_add(amount)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+    market.total_amount = market
+        .total_amount
+        .checked_add(amount)
+        .ok_or(PredictionMarketError::MathOverflow)?;
 
     Ok(())
 }

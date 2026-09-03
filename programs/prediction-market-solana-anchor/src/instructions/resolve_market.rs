@@ -35,14 +35,7 @@ pub fn resolve_market(ctx: Context<ResolveMarket>, outcome: Outcome) -> Result<(
     );
 
     match outcome {
-        Outcome::Yes => {
-            require!(market.total_yes > 0, PredictionMarketError::NoWinningShares);
-        }
-
-        Outcome::No => {
-            require!(market.total_no > 0, PredictionMarketError::NoWinningShares);
-        }
-
+        Outcome::Yes | Outcome::No => {}
         Outcome::Unresolved | Outcome::Cancelled => {
             return err!(PredictionMarketError::InvalidOutcome);
         }

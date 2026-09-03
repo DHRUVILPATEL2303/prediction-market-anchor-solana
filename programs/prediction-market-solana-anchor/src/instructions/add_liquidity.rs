@@ -9,6 +9,7 @@ pub struct AddLiquidity<'info> {
     pub provider: Signer<'info>,
 
     #[account(
+        mut,
         seeds = [
             b"market",
             market.authority.as_ref(),
@@ -102,6 +103,24 @@ pub struct AddLiquidity<'info> {
     pub no_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(
+        mut,
+        constraint = provider_yes_account.owner == provider.key()
+            @ PredictionMarketError::Unauthorized,
+        constraint = provider_yes_account.mint == yes_mint.key()
+            @ PredictionMarketError::InvalidMint
+    )]
+    pub provider_yes_account: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        constraint = provider_no_account.owner == provider.key()
+            @ PredictionMarketError::Unauthorized,
+        constraint = provider_no_account.mint == no_mint.key()
+            @ PredictionMarketError::InvalidMint
+    )]
+    pub provider_no_account: Box<Account<'info, TokenAccount>>,
+
+    #[account(
         init_if_needed,
         payer = provider,
         space = 8 + LpPosition::INIT_SPACE,
@@ -122,7 +141,7 @@ pub struct AddLiquidity<'info> {
 pub fn add_liquidity(ctx: Context<AddLiquidity>, payment_amount: u64) -> Result<()> {
     require!(payment_amount > 0, PredictionMarketError::InvalidAmount);
 
-    let market = &ctx.accounts.market;
+    let market = &mut ctx.accounts.market;
 
     require!(
         market.outcome == Outcome::Unresolved,
@@ -134,7 +153,6 @@ pub fn add_liquidity(ctx: Context<AddLiquidity>, payment_amount: u64) -> Result<
     require!(now < market.end_time, PredictionMarketError::MarketClosed);
 
     let amm = &mut ctx.accounts.amm;
-
     let lp_position = &mut ctx.accounts.lp_position;
 
     if lp_position.owner == Pubkey::default() {
@@ -154,43 +172,44 @@ pub fn add_liquidity(ctx: Context<AddLiquidity>, payment_amount: u64) -> Result<
         );
     }
 
-    let yes_amount = payment_amount;
-    let no_amount = payment_amount;
-
     let old_yes = ctx.accounts.yes_vault.amount;
     let old_no = ctx.accounts.no_vault.amount;
 
-    let minted_lp = if amm.lp_supply == 0 {
-        payment_amount
+    let (yes_deposit, no_deposit, minted_lp) = if amm.lp_supply == 0 {
+        (payment_amount, payment_amount, payment_amount)
     } else {
         require!(
             old_yes > 0 && old_no > 0,
             PredictionMarketError::InvalidLiquidity
         );
 
-        require!(
-            old_yes == old_no,
-            PredictionMarketError::InvalidLiquidityRatio
-        );
-
-        let lp_from_yes = yes_amount
-            .checked_mul(amm.lp_supply)
+        let lp_from_yes = (payment_amount as u128)
+            .checked_mul(amm.lp_supply as u128)
             .ok_or(PredictionMarketError::MathOverflow)?
-            .checked_div(old_yes)
+            .checked_div(old_yes as u128)
             .ok_or(PredictionMarketError::MathOverflow)?;
 
-        let lp_from_no = no_amount
-            .checked_mul(amm.lp_supply)
+        let lp_from_no = (payment_amount as u128)
+            .checked_mul(amm.lp_supply as u128)
             .ok_or(PredictionMarketError::MathOverflow)?
-            .checked_div(old_no)
+            .checked_div(old_no as u128)
             .ok_or(PredictionMarketError::MathOverflow)?;
 
-        require!(
-            lp_from_yes == lp_from_no,
-            PredictionMarketError::InvalidLiquidityRatio
-        );
+        let minted_lp = std::cmp::min(lp_from_yes, lp_from_no) as u64;
 
-        lp_from_yes
+        let yes_deposit = (minted_lp as u128)
+            .checked_mul(old_yes as u128)
+            .ok_or(PredictionMarketError::MathOverflow)?
+            .checked_div(amm.lp_supply as u128)
+            .ok_or(PredictionMarketError::MathOverflow)? as u64;
+
+        let no_deposit = (minted_lp as u128)
+            .checked_mul(old_no as u128)
+            .ok_or(PredictionMarketError::MathOverflow)?
+            .checked_div(amm.lp_supply as u128)
+            .ok_or(PredictionMarketError::MathOverflow)? as u64;
+
+        (yes_deposit, no_deposit, minted_lp)
     };
 
     require!(minted_lp > 0, PredictionMarketError::InvalidAmount);
@@ -209,48 +228,84 @@ pub fn add_liquidity(ctx: Context<AddLiquidity>, payment_amount: u64) -> Result<
     transfer(payment_ctx, payment_amount)?;
 
     let market_key = market.key();
-
     let outcome_bump = [ctx.bumps.outcome_authority];
-
     let outcome_signer_seeds: &[&[u8]] =
         &[b"outcome-authority", market_key.as_ref(), &outcome_bump];
-
     let outcome_signer: &[&[&[u8]]] = &[outcome_signer_seeds];
+
+    let yes_excess = payment_amount
+        .checked_sub(yes_deposit)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+    let no_excess = payment_amount
+        .checked_sub(no_deposit)
+        .ok_or(PredictionMarketError::MathOverflow)?;
 
     let yes_mint_accounts = MintTo {
         mint: ctx.accounts.yes_mint.to_account_info(),
         to: ctx.accounts.yes_vault.to_account_info(),
         authority: ctx.accounts.outcome_authority.to_account_info(),
     };
+    mint_to(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info().key(),
+            yes_mint_accounts,
+            outcome_signer,
+        ),
+        yes_deposit,
+    )?;
 
-    let yes_mint_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info().key(),
-        yes_mint_accounts,
-        outcome_signer,
-    );
-
-    mint_to(yes_mint_ctx, yes_amount)?;
+    if yes_excess > 0 {
+        let yes_mint_excess = MintTo {
+            mint: ctx.accounts.yes_mint.to_account_info(),
+            to: ctx.accounts.provider_yes_account.to_account_info(),
+            authority: ctx.accounts.outcome_authority.to_account_info(),
+        };
+        mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info().key(),
+                yes_mint_excess,
+                outcome_signer,
+            ),
+            yes_excess,
+        )?;
+    }
 
     let no_mint_accounts = MintTo {
         mint: ctx.accounts.no_mint.to_account_info(),
         to: ctx.accounts.no_vault.to_account_info(),
         authority: ctx.accounts.outcome_authority.to_account_info(),
     };
+    mint_to(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info().key(),
+            no_mint_accounts,
+            outcome_signer,
+        ),
+        no_deposit,
+    )?;
 
-    let no_mint_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info().key(),
-        no_mint_accounts,
-        outcome_signer,
-    );
-
-    mint_to(no_mint_ctx, no_amount)?;
+    if no_excess > 0 {
+        let no_mint_excess = MintTo {
+            mint: ctx.accounts.no_mint.to_account_info(),
+            to: ctx.accounts.provider_no_account.to_account_info(),
+            authority: ctx.accounts.outcome_authority.to_account_info(),
+        };
+        mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info().key(),
+                no_mint_excess,
+                outcome_signer,
+            ),
+            no_excess,
+        )?;
+    }
 
     amm.yes_reserve = old_yes
-        .checked_add(yes_amount)
+        .checked_add(yes_deposit)
         .ok_or(PredictionMarketError::MathOverflow)?;
 
     amm.no_reserve = old_no
-        .checked_add(no_amount)
+        .checked_add(no_deposit)
         .ok_or(PredictionMarketError::MathOverflow)?;
 
     amm.lp_supply = amm
@@ -261,6 +316,19 @@ pub fn add_liquidity(ctx: Context<AddLiquidity>, payment_amount: u64) -> Result<
     lp_position.shares = lp_position
         .shares
         .checked_add(minted_lp)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+
+    market.total_yes = market
+        .total_yes
+        .checked_add(payment_amount)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+    market.total_no = market
+        .total_no
+        .checked_add(payment_amount)
+        .ok_or(PredictionMarketError::MathOverflow)?;
+    market.total_amount = market
+        .total_amount
+        .checked_add(payment_amount)
         .ok_or(PredictionMarketError::MathOverflow)?;
 
     Ok(())

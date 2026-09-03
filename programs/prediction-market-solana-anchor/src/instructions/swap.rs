@@ -1,8 +1,6 @@
 use crate::{AmmPool, Market, Outcome, PredictionMarketError, SwapDirection};
 use anchor_lang::prelude::*;
-use anchor_spl::token::{
-    mint_to, transfer, Mint, MintTo, Token, TokenAccount, Transfer,
-};
+use anchor_spl::token::{mint_to, transfer, Mint, MintTo, Token, TokenAccount, Transfer};
 
 #[derive(Accounts)]
 pub struct Swap<'info> {
@@ -10,6 +8,7 @@ pub struct Swap<'info> {
     pub user: Signer<'info>,
 
     #[account(
+        mut,
         seeds = [
             b"market",
             market.authority.as_ref(),
@@ -125,16 +124,17 @@ pub fn swap(
 ) -> Result<()> {
     require!(amount_in > 0, PredictionMarketError::InvalidAmount);
 
-    let market = &ctx.accounts.market;
-
+    let market_outcome = ctx.accounts.market.outcome;
     require!(
-        market.outcome == Outcome::Unresolved,
+        market_outcome == Outcome::Unresolved,
         PredictionMarketError::MarketAlreadyResolved
     );
 
     let now = Clock::get()?.unix_timestamp;
-
-    require!(now < market.end_time, PredictionMarketError::MarketClosed);
+    require!(
+        now < ctx.accounts.market.end_time,
+        PredictionMarketError::MarketClosed
+    );
 
     let fee = (amount_in as u128)
         .checked_mul(ctx.accounts.amm.fee_bps as u128)
@@ -155,6 +155,21 @@ pub fn swap(
         SwapDirection::UsdcToYes => {
             transfer_usdc_to_vault(&ctx, amount_in)?;
             mint_complete_set_to_user(&ctx, amount_in)?;
+
+            let market = &mut ctx.accounts.market;
+            market.total_yes = market
+                .total_yes
+                .checked_add(amount_in)
+                .ok_or(PredictionMarketError::MathOverflow)?;
+            market.total_no = market
+                .total_no
+                .checked_add(amount_in)
+                .ok_or(PredictionMarketError::MathOverflow)?;
+            market.total_amount = market
+                .total_amount
+                .checked_add(amount_in)
+                .ok_or(PredictionMarketError::MathOverflow)?;
+
             swap_outcome_tokens(
                 &mut ctx,
                 amount_in,
@@ -166,6 +181,21 @@ pub fn swap(
         SwapDirection::UsdcToNo => {
             transfer_usdc_to_vault(&ctx, amount_in)?;
             mint_complete_set_to_user(&ctx, amount_in)?;
+
+            let market = &mut ctx.accounts.market;
+            market.total_yes = market
+                .total_yes
+                .checked_add(amount_in)
+                .ok_or(PredictionMarketError::MathOverflow)?;
+            market.total_no = market
+                .total_no
+                .checked_add(amount_in)
+                .ok_or(PredictionMarketError::MathOverflow)?;
+            market.total_amount = market
+                .total_amount
+                .checked_add(amount_in)
+                .ok_or(PredictionMarketError::MathOverflow)?;
+
             swap_outcome_tokens(
                 &mut ctx,
                 amount_in,
@@ -248,7 +278,6 @@ fn mint_complete_set_to_user<'info>(ctx: &Context<'_, Swap<'info>>, amount: u64)
     Ok(())
 }
 
-
 fn calculate_amount_out(
     reserve_in: u64,
     reserve_out: u64,
@@ -271,6 +300,10 @@ fn calculate_amount_out(
         .ok_or(PredictionMarketError::MathOverflow)?;
 
     let new_reserve_out = k
+        .checked_add(new_reserve_in)
+        .ok_or(PredictionMarketError::MathOverflow)?
+        .checked_sub(1)
+        .ok_or(PredictionMarketError::MathOverflow)?
         .checked_div(new_reserve_in)
         .ok_or(PredictionMarketError::MathOverflow)?;
 
