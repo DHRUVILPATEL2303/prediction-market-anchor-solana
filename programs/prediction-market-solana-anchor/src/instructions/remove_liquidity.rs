@@ -94,6 +94,8 @@ pub struct RemoveLiquidity<'info> {
     pub lp_position: Box<Account<'info, LpPosition>>,
 
     pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
+    pub system_program: Program<'info, System>,
 }
 
 pub fn remove_liquidity(ctx: Context<RemoveLiquidity>, shares: u64) -> Result<()> {

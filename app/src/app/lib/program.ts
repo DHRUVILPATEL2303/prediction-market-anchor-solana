@@ -76,14 +76,14 @@ export function useMarketActions() {
     const [noMint] = PublicKey.findProgramAddressSync([Buffer.from("no-mint"), marketPda.toBuffer()], PROGRAM_ID);
 
     const ixAmm = await program.methods.initializeAmm(feeBps).accounts({
-        authority: wallet.publicKey,
-        market: marketPda,
-        amm,
-        outcomeAuthority,
-        yesMint,
-        noMint,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
+      authority: wallet.publicKey,
+      market: marketPda,
+      amm,
+      outcomeAuthority,
+      yesMint,
+      noMint,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
     }).instruction();
 
     const [ammAuthority] = PublicKey.findProgramAddressSync([Buffer.from("amm-authority"), marketPda.toBuffer()], PROGRAM_ID);
@@ -92,18 +92,18 @@ export function useMarketActions() {
     const [noVault] = PublicKey.findProgramAddressSync([Buffer.from("no-vault"), marketPda.toBuffer()], PROGRAM_ID);
 
     const ixAmmVaults = await program.methods.initializeAmmVaults().accounts({
-        authority: wallet.publicKey,
-        market: marketPda,
-        amm,
-        ammAuthority,
-        paymentMint,
-        yesMint,
-        noMint,
-        paymentVault,
-        yesVault,
-        noVault,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
+      authority: wallet.publicKey,
+      market: marketPda,
+      amm,
+      ammAuthority,
+      paymentMint,
+      yesMint,
+      noMint,
+      paymentVault,
+      yesVault,
+      noVault,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
     }).instruction();
 
     const tx = new Transaction().add(ixMarket).add(ixAmm).add(ixAmmVaults);
@@ -131,7 +131,7 @@ export function useMarketActions() {
     const [paymentVault] = PublicKey.findProgramAddressSync([Buffer.from("payment-vault"), market.toBuffer()], PROGRAM_ID);
     const [yesVault] = PublicKey.findProgramAddressSync([Buffer.from("yes-vault"), market.toBuffer()], PROGRAM_ID);
     const [noVault] = PublicKey.findProgramAddressSync([Buffer.from("no-vault"), market.toBuffer()], PROGRAM_ID);
-    
+
     const [lpPosition] = PublicKey.findProgramAddressSync(
       [Buffer.from("lp-position"), wallet.publicKey.toBuffer(), amm.toBuffer()],
       PROGRAM_ID
@@ -164,6 +164,7 @@ export function useMarketActions() {
         providerNoAccount,
         lpPosition,
         tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .instruction();
@@ -217,6 +218,8 @@ export function useMarketActions() {
         providerNoAccount,
         lpPosition,
         tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .instruction();
 
@@ -244,10 +247,10 @@ export function useMarketActions() {
     const [amm] = PublicKey.findProgramAddressSync([Buffer.from("amm"), market.toBuffer()], PROGRAM_ID);
     const [ammAuthority] = PublicKey.findProgramAddressSync([Buffer.from("amm-authority"), market.toBuffer()], PROGRAM_ID);
     const [outcomeAuthority] = PublicKey.findProgramAddressSync([Buffer.from("outcome-authority"), market.toBuffer()], PROGRAM_ID);
-    
+
     const [yesMint] = PublicKey.findProgramAddressSync([Buffer.from("yes-mint"), market.toBuffer()], PROGRAM_ID);
     const [noMint] = PublicKey.findProgramAddressSync([Buffer.from("no-mint"), market.toBuffer()], PROGRAM_ID);
-    
+
     const [paymentVault] = PublicKey.findProgramAddressSync([Buffer.from("payment-vault"), market.toBuffer()], PROGRAM_ID);
     const [yesVault] = PublicKey.findProgramAddressSync([Buffer.from("yes-vault"), market.toBuffer()], PROGRAM_ID);
     const [noVault] = PublicKey.findProgramAddressSync([Buffer.from("no-vault"), market.toBuffer()], PROGRAM_ID);
@@ -536,7 +539,7 @@ export async function fetchAllMarkets(
         const decoded = await program.coder.accounts.decode("market", raw.account.data);
         const marketPubkey = raw.pubkey.toString();
         const amm = ammMap.get(marketPubkey);
-        
+
         validMarkets.push({
           publicKey: marketPubkey,
           marketId: decoded.marketId.toString(),

@@ -103,20 +103,18 @@ pub struct AddLiquidity<'info> {
     pub no_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(
-        mut,
-        constraint = provider_yes_account.owner == provider.key()
-            @ PredictionMarketError::Unauthorized,
-        constraint = provider_yes_account.mint == yes_mint.key()
-            @ PredictionMarketError::InvalidMint
+        init_if_needed,
+        payer = provider,
+        associated_token::mint = yes_mint,
+        associated_token::authority = provider
     )]
     pub provider_yes_account: Box<Account<'info, TokenAccount>>,
 
     #[account(
-        mut,
-        constraint = provider_no_account.owner == provider.key()
-            @ PredictionMarketError::Unauthorized,
-        constraint = provider_no_account.mint == no_mint.key()
-            @ PredictionMarketError::InvalidMint
+        init_if_needed,
+        payer = provider,
+        associated_token::mint = no_mint,
+        associated_token::authority = provider
     )]
     pub provider_no_account: Box<Account<'info, TokenAccount>>,
 
@@ -134,6 +132,7 @@ pub struct AddLiquidity<'info> {
     pub lp_position: Box<Account<'info, LpPosition>>,
 
     pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
 
     pub system_program: Program<'info, System>,
 }
