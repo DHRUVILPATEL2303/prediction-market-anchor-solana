@@ -481,7 +481,21 @@ export function MarketDetails({ marketId }: { marketId: string }) {
                     Cancel
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
 
+          {/* Liquidity Management (Public) */}
+          {market.outcome === "Unresolved" && (
+            <div className="panel">
+              <div className="panel-hd">
+                <span className="panel-hd-title">Liquidity Pool</span>
+                <span className="panel-hd-sub">Provide liquidity to earn fees</span>
+              </div>
+              <div className="admin-body">
+                <p className="admin-desc">
+                  Anyone can provide USDC to the AMM pool.
+                </p>
                 <div className="liq-row">
                   <input
                     type="number"
