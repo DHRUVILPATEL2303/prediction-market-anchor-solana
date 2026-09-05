@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize,Debug,Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum RawSolanaEvent {
     Transaction(String),
     LogSignature(String),
