@@ -7,13 +7,16 @@ members = [
 
 [workspace.dependencies]
 actix-web = "4"
-actix-cors = "0.6"
+actix-cors = "0.7"
 actix-ws = "0.3"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "time"] }
+# Use SQLx 0.6 to perfectly align with solana-sdk 1.18.0 crypto dependencies
+sqlx = { version = "0.6", default-features = false, features = ["postgres", "runtime-tokio-rustls", "time", "macros"] }
 rdkafka = "0.36"
-anchor-client = "1.1.2"
-solana-sdk = "4.1.0"
+solana-sdk = "~1.18"
+solana-client = "~1.18"
+anchor-client = "0.30.1"
 dotenvy = "0.15"
+async-trait = "0.1"

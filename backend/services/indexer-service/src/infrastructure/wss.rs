@@ -23,11 +23,13 @@ impl EventProvider for WssProvider {
         tokio::spawn(async move {
             loop {
                 if let Ok(response) = receiver.recv() {
-                    let _ = sender.send(RawSolanaEvent::LogSignature(response.value.signature)).await;
+                    let _ = sender
+                        .send(RawSolanaEvent::LogSignature(response.value.signature))
+                        .await;
                 }
             }
         });
-        
+
         Ok(())
     }
 }
