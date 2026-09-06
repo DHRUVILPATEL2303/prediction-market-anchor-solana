@@ -3,6 +3,7 @@ mod infrastructure;
 mod application;
 
 use crate::domain::events::EventProvider;
+use crate::infrastructure::kafka::KafkaProducer;
 use crate::infrastructure::webhook::WebhookProvider;
 use crate::infrastructure::wss::WssProvider;
 use dotenvy::dotenv;
@@ -14,6 +15,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     
     let mode = env::var("INGESTION_MODE").unwrap_or_else(|_| "wss".to_string());
+    let kafka_brokers = env::var("KAFKA_BROKERS").unwrap_or_else(|_| "localhost:9092".to_string());
+    let kafka_topic = env::var("KAFKA_TOPIC").unwrap_or_else(|_| "solana_events".to_string());
+    
+    let producer = KafkaProducer::new(&kafka_brokers, kafka_topic);
     let (tx, mut rx) = mpsc::channel(100);
 
     let provider: Box<dyn EventProvider> = match mode.as_str() {
@@ -26,11 +31,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
     };
 
-    println!("Starting indexer service in {} mode...", mode);
     provider.start_listening(tx).await?;
 
     while let Some(event) = rx.recv().await {
-        println!("Received event: {:?}", event);
+        producer.send_event(event).await;
     }
 
     Ok(())

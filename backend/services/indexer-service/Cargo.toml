@@ -14,4 +14,5 @@ solana-client.workspace = true
 anchor-client.workspace = true
 dotenvy.workspace = true
 async-trait.workspace = true
+rdkafka.workspace = true
 shared-domain = { path = "../../crates/shared-domain" }
